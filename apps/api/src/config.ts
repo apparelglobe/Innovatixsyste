@@ -55,8 +55,17 @@ const schema = z.object({
   STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('.filestore'),
   MAX_FILE_BYTES: int(25 * 1024 * 1024),
+  // S3-compatible object storage (AWS S3, Cloudflare R2, MinIO, …). Never
+  // hardcoded — bucket/region/endpoint/creds all come from the environment.
   S3_BUCKET: z.string().optional().default(''),
-  S3_REGION: z.string().optional().default(''),
+  S3_REGION: z.string().optional().default('us-east-1'),
+  S3_ENDPOINT: z.string().optional().default(''), // set for non-AWS (R2/MinIO)
+  S3_ACCESS_KEY_ID: z.string().optional().default(''),
+  S3_SECRET_ACCESS_KEY: z.string().optional().default(''),
+  S3_FORCE_PATH_STYLE: bool(false), // required by MinIO / some R2 setups
+  S3_SIGNED_URL_TTL_SECONDS: int(300),
+  // Archives (zip/…) are blocked by default; opt in explicitly per deployment.
+  STORAGE_ALLOW_ARCHIVES: bool(false),
 
   // Client portal (Launch 2). Client and staff JWTs are signed with SEPARATE
   // secrets so a client token can never be verified as a staff token even if
@@ -105,6 +114,8 @@ const secretProblems = validateProductionSecrets({
   STORAGE_PROVIDER: parsed.data.STORAGE_PROVIDER,
   S3_BUCKET: parsed.data.S3_BUCKET,
   S3_REGION: parsed.data.S3_REGION,
+  S3_ACCESS_KEY_ID: parsed.data.S3_ACCESS_KEY_ID,
+  S3_SECRET_ACCESS_KEY: parsed.data.S3_SECRET_ACCESS_KEY,
   EMAIL_TRANSPORT: parsed.data.EMAIL_TRANSPORT,
   POSTMARK_SERVER_TOKEN: parsed.data.POSTMARK_SERVER_TOKEN,
   PAYMENTS_PROVIDER: parsed.data.PAYMENTS_PROVIDER,

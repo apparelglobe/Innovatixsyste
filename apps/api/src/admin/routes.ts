@@ -17,7 +17,7 @@ import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPas
 import { can, type Action } from '../staff/rbac';
 import { notifyClientOrg } from '../notifications/service';
 import { convertLead } from './conversion';
-import { storage, storageKey, validateUpload } from '../storage';
+import { storage, objectKey, validateUpload } from '../storage';
 import { enrichApprovals } from '../lib/approvals';
 import { enrichInvoice } from '../lib/invoices';
 import { config } from '../config';
@@ -460,10 +460,10 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (!mp) return reply.code(400).send({ ok: false, message: 'no_file' });
     let buffer: Buffer;
     try { buffer = await mp.toBuffer(); } catch { return reply.code(413).send({ ok: false, message: 'file_too_large' }); }
-    const v = validateUpload(mp.mimetype, buffer.length);
-    if (!v.ok) return reply.code(400).send({ ok: false, message: v.reason });
-    const scan = await scanFile(buffer, mp.mimetype);
-    if (!scan.clean) return reply.code(400).send({ ok: false, message: 'file_rejected', reason: scan.reason });
+    // Validate declared MIME + size + filename + actual signature (never trust
+    // the browser Content-Type). Executables/scripts/double-extensions rejected here.
+    const v = validateUpload(mp.mimetype, buffer.length, mp.filename, buffer);
+    if (!v.ok) return reply.code(400).send({ ok: false, message: 'file_rejected', reason: v.reason });
 
     // Resolve version chain if this is a replacement.
     let previous: { id: string; rootId: string | null; version: number; clientVisible: boolean } | null = null;
@@ -479,11 +479,37 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     // Visibility: explicit flag wins; else inherit the prior version's (default true for new files).
     const clientVisible = q.clientVisible != null ? q.clientVisible !== 'false' : previous ? previous.clientVisible : true;
 
-    const file = await prisma.projectFile.create({ data: { tenantId: ctx.tenantId, projectId: p.id, name: cleanText(mp.filename, 200), category, sizeBytes: buffer.length, mimeType: mp.mimetype, clientVisible, uploadedByStaffId: ctx.session.sub, storageProvider: storage().provider, version, scanStatus: 'clean', isCurrent: true, rootId: rootId ?? undefined } });
-    const key = storageKey(ctx.tenantId, p.id, file.id, mp.filename);
-    await storage().put(key, buffer, mp.mimetype);
+    // 1) PENDING_UPLOAD — record created, not current, not downloadable yet.
+    const file = await prisma.projectFile.create({ data: { tenantId: ctx.tenantId, projectId: p.id, name: cleanText(mp.filename, 200), category, sizeBytes: buffer.length, mimeType: mp.mimetype, clientVisible, uploadedByStaffId: ctx.session.sub, storageProvider: storage().provider, version, state: 'PENDING_UPLOAD', scanStatus: 'pending', isCurrent: false, rootId: rootId ?? undefined } });
+    // Deterministic, fully-scoped key — a new version never overwrites a prior object.
+    const key = objectKey({ tenantId: ctx.tenantId, clientOrgId: p.clientOrgId, projectId: p.id, fileId: file.id, version, filename: mp.filename });
+
+    // 2) Store, then VERIFY the object exists and the size matches (no silent drift).
+    try {
+      await storage().put(key, buffer, mp.mimetype);
+      const head = await storage().head(key);
+      if (!head.exists || (head.size != null && head.size !== buffer.length)) throw new Error('object_verify_failed');
+    } catch (err) {
+      await prisma.projectFile.update({ where: { id: file.id }, data: { state: 'REJECTED' } });
+      await storage().delete(key).catch(() => undefined);
+      await audit(ctx.tenantId, ctx.session.sub, 'ProjectFile', file.id, 'FILE_REJECTED', { reason: 'storage_verify_failed' });
+      req.log.error({ err: err instanceof Error ? err.message : String(err), fileId: file.id }, 'file storage/verify failed');
+      return reply.code(502).send({ ok: false, message: 'upload_failed' });
+    }
+
+    // 3) UPLOADED → SCANNING → scan. QUARANTINED files are deleted + never available.
+    await prisma.projectFile.update({ where: { id: file.id }, data: { storageKey: key, state: 'SCANNING' } });
+    const scan = await scanFile(buffer, mp.mimetype);
+    if (!scan.clean) {
+      await prisma.projectFile.update({ where: { id: file.id }, data: { state: 'QUARANTINED', scanStatus: 'infected' } });
+      await storage().delete(key).catch(() => undefined);
+      await audit(ctx.tenantId, ctx.session.sub, 'ProjectFile', file.id, 'FILE_QUARANTINED', { reason: scan.reason });
+      return reply.code(400).send({ ok: false, message: 'file_rejected', reason: scan.reason });
+    }
+
+    // 4) AVAILABLE — becomes the current version; only now is it client-visible.
     await prisma.$transaction([
-      prisma.projectFile.update({ where: { id: file.id }, data: { storageKey: key, ...(rootId ? {} : { rootId: file.id }) } }),
+      prisma.projectFile.update({ where: { id: file.id }, data: { state: 'AVAILABLE', scanStatus: 'clean', isCurrent: true, ...(rootId ? {} : { rootId: file.id }) } }),
       ...(previous ? [prisma.projectFile.update({ where: { id: previous.id }, data: { isCurrent: false } })] : []),
     ]);
 
@@ -492,7 +518,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       await activity(ctx.tenantId, p.id, 'FILE', previous ? `File updated: ${file.name} (v${version})` : `File uploaded: ${file.name}`);
       await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'FILE_UPLOADED', title: previous ? `Updated file: ${file.name} (v${version})` : `New file: ${file.name}`, projectId: p.id, linkPath: '/files', email: true });
     }
-    return reply.send({ ok: true, file: { id: file.id, version } });
+    return reply.send({ ok: true, file: { id: file.id, version, state: 'AVAILABLE' } });
   });
 
   // ── Version history for a file (staff) ──
@@ -504,16 +530,18 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const versions = await prisma.projectFile.findMany({
       where: { tenantId: ctx.tenantId, rootId: root },
       orderBy: { version: 'desc' },
-      select: { id: true, name: true, version: true, isCurrent: true, sizeBytes: true, clientVisible: true, uploadedAt: true, deletedAt: true },
+      select: { id: true, name: true, version: true, isCurrent: true, state: true, sizeBytes: true, clientVisible: true, uploadedAt: true, deletedAt: true },
     });
     return reply.send({ ok: true, versions });
   });
 
+  // Staff download — any non-deleted version, but only if scan-clean (AVAILABLE).
   app.get('/admin/files/:id/download', async (req, reply) => {
     const ctx = await requireStaff(req, reply, 'project:view'); if (!ctx) return;
-    const file = await prisma.projectFile.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId, deletedAt: null } });
+    const file = await prisma.projectFile.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId, deletedAt: null, state: 'AVAILABLE' } });
     if (!file?.storageKey) return reply.code(404).send({ ok: false });
-    const signed = await storage().getSignedUrl(file.storageKey, 300);
+    await audit(ctx.tenantId, ctx.session.sub, 'ProjectFile', file.id, 'FILE_DOWNLOADED', { version: file.version });
+    const signed = await storage().getSignedUrl(file.storageKey, config.S3_SIGNED_URL_TTL_SECONDS);
     if (signed) return reply.redirect(signed);
     reply.header('content-type', file.mimeType || 'application/octet-stream');
     reply.header('content-disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
@@ -524,8 +552,10 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const ctx = await requireStaff(req, reply, 'file:write'); if (!ctx) return;
     const file = await prisma.projectFile.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId, deletedAt: null } });
     if (!file) return reply.code(404).send({ ok: false });
-    await prisma.projectFile.update({ where: { id: file.id }, data: { deletedAt: new Date() } });
-    if (file.storageKey) await storage().delete(file.storageKey).catch(() => undefined);
+    // Soft delete (DB truth) + best-effort object removal. Object-delete failures
+    // don't block the soft delete — a lifecycle policy / retry sweeps orphans.
+    await prisma.projectFile.update({ where: { id: file.id }, data: { state: 'DELETED', deletedAt: new Date() } });
+    if (file.storageKey) await storage().delete(file.storageKey).catch(() => req.log.warn({ fileId: file.id }, 'object delete failed; left for lifecycle policy'));
     await audit(ctx.tenantId, ctx.session.sub, 'ProjectFile', file.id, 'FILE_DELETED');
     return reply.send({ ok: true });
   });

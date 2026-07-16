@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "FileState" AS ENUM ('PENDING_UPLOAD', 'UPLOADED', 'SCANNING', 'AVAILABLE', 'QUARANTINED', 'REJECTED', 'DELETED');
+
+-- AlterTable
+ALTER TABLE "project_files" ADD COLUMN     "state" "FileState" NOT NULL DEFAULT 'AVAILABLE';

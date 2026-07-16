@@ -159,7 +159,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         reports: { orderBy: { publishedAt: 'desc' } },
         approvals: { orderBy: { createdAt: 'desc' } },
         invoices: { orderBy: { createdAt: 'desc' } },
-        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true }, orderBy: { uploadedAt: 'desc' } },
+        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true, state: 'AVAILABLE' }, orderBy: { uploadedAt: 'desc' } },
         members: true,
         messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
       },
@@ -180,7 +180,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         reports: { orderBy: { publishedAt: 'desc' } },
         approvals: { orderBy: { createdAt: 'desc' } },
         invoices: { orderBy: { createdAt: 'desc' } },
-        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true }, orderBy: { uploadedAt: 'desc' } },
+        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true, state: 'AVAILABLE' }, orderBy: { uploadedAt: 'desc' } },
         members: true,
         messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
       },
@@ -331,11 +331,14 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.get('/portal/files/:id/download', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
+    // Scoped + current + client-visible + scan-clean (AVAILABLE). Internal-only,
+    // quarantined, unscanned, non-current, deleted, or cross-org → 404 (no reveal).
     const file = await prisma.projectFile.findFirst({
-      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, deletedAt: null, clientVisible: true, isCurrent: true, project: { clientOrgId: ctx.session.org } },
+      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, deletedAt: null, clientVisible: true, isCurrent: true, state: 'AVAILABLE', project: { clientOrgId: ctx.session.org } },
     });
     if (!file?.storageKey) return reply.code(404).send({ ok: false });
-    const signed = await storage().getSignedUrl(file.storageKey, 300);
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ProjectFile', entityId: file.id, action: 'FILE_DOWNLOADED', actorType: 'ADMIN', actorId: ctx.session.sub, data: { via: 'portal', version: file.version } } }).catch(() => undefined);
+    const signed = await storage().getSignedUrl(file.storageKey, config.S3_SIGNED_URL_TTL_SECONDS);
     if (signed) return reply.redirect(signed); // S3: short-lived signed URL
     reply.header('content-type', file.mimeType || 'application/octet-stream');
     reply.header('content-disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);

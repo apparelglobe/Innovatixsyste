@@ -39,6 +39,8 @@ export interface ProdSecretEnv {
   STORAGE_PROVIDER: string;
   S3_BUCKET: string;
   S3_REGION: string;
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
   EMAIL_TRANSPORT: string;
   POSTMARK_SERVER_TOKEN: string;
   PAYMENTS_PROVIDER: string;
@@ -91,6 +93,8 @@ export function validateProductionSecrets(env: ProdSecretEnv): string[] {
   if (env.STORAGE_PROVIDER === 's3') {
     if ((env.S3_BUCKET ?? '').trim() === '') errors.push('S3_BUCKET is required when STORAGE_PROVIDER=s3.');
     if ((env.S3_REGION ?? '').trim() === '') errors.push('S3_REGION is required when STORAGE_PROVIDER=s3.');
+    if ((env.S3_ACCESS_KEY_ID ?? '').trim() === '') errors.push('S3_ACCESS_KEY_ID is required when STORAGE_PROVIDER=s3.');
+    if ((env.S3_SECRET_ACCESS_KEY ?? '').trim() === '') errors.push('S3_SECRET_ACCESS_KEY is required when STORAGE_PROVIDER=s3.');
   }
   if (env.PAYMENTS_PROVIDER === 'stripe') {
     if ((env.STRIPE_SECRET_KEY ?? '').trim() === '') {

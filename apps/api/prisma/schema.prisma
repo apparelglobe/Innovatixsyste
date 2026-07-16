@@ -504,7 +504,9 @@ model ProjectFile {
   version    Int          @default(1)
   rootId     String?      // first version's id (self for v1) — groups a version chain
   isCurrent  Boolean      @default(true) // only the latest non-deleted version is current
-  scanStatus String       @default("clean") // 'clean' | 'infected' | 'pending'
+  // Full upload/scan lifecycle. A file is downloadable ONLY in AVAILABLE.
+  state      FileState    @default(AVAILABLE)
+  scanStatus String       @default("clean") // legacy: 'clean' | 'infected' | 'pending'
   uploadedByStaffId String?
   clientVisible Boolean    @default(true)
   deletedAt  DateTime?
@@ -768,6 +770,16 @@ enum FileCategory {
   INVOICE
   DELIVERABLE
   OTHER
+}
+
+enum FileState {
+  PENDING_UPLOAD // record created, bytes not yet stored
+  UPLOADED       // object stored + existence/size verified
+  SCANNING       // malware scan in progress
+  AVAILABLE      // scan clean — the ONLY downloadable state
+  QUARANTINED    // scan flagged malware — never downloadable
+  REJECTED       // failed validation / storage verification
+  DELETED        // soft-deleted
 }
 
 enum InvoiceStatus {

@@ -1,36 +1,61 @@
 /**
- * Storage factory + upload validation. Returns the configured adapter; the S3
- * adapter is a documented stub until prod credentials are wired (the interface
- * is stable, so callers don't change).
+ * Storage factory + upload validation + object-key strategy.
+ *
+ * Object keys are deterministic-but-unguessable and fully scoped:
+ *   tenant/{tenantId}/org/{clientOrgId}/project/{projectId}/file/{fileId}/v/{version}/{safeFilename}
+ * The database — not the key — is the source of truth for ownership, visibility,
+ * version, and authorization. A browser-supplied key is never trusted.
  */
 import type { FileStorage } from './types';
 import { LocalStorage } from './local';
-import { ALLOWED_MIME } from './types';
+import { S3CompatibleStorage } from './s3';
+import { DEFAULT_ALLOWED_MIME, ARCHIVE_MIME, isDangerousFilename, contentMatchesDeclared } from './types';
 import { config } from '../config';
 
-class S3StorageStub implements FileStorage {
-  readonly provider = 's3' as const;
-  async put(): Promise<void> { throw new Error('S3 storage not configured — set STORAGE_PROVIDER=local for dev, or wire the S3/R2 adapter.'); }
-  async getStream(): Promise<null> { return null; }
-  async getSignedUrl(): Promise<string> { throw new Error('S3 storage not configured.'); }
-  async delete(): Promise<void> { /* no-op */ }
-}
-
 let cached: FileStorage | null = null;
+let override: FileStorage | null = null;
 export function storage(): FileStorage {
+  if (override) return override;
   if (cached) return cached;
-  cached = config.STORAGE_PROVIDER === 's3' ? new S3StorageStub() : new LocalStorage();
+  cached = config.STORAGE_PROVIDER === 's3' ? new S3CompatibleStorage() : new LocalStorage();
   return cached;
 }
+/** Test seams. */
+export function __resetStorageCache(): void { cached = null; }
+export function __setStorageForTest(s: FileStorage | null): void { override = s; }
 
+/** Deterministic, fully-scoped object key. Never derived from client input. */
+export function objectKey(args: { tenantId: string; clientOrgId: string; projectId: string; fileId: string; version: number; filename: string }): string {
+  const safe = args.filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.\.+/g, '.').slice(0, 100) || 'file';
+  return `tenant/${args.tenantId}/org/${args.clientOrgId}/project/${args.projectId}/file/${args.fileId}/v/${args.version}/${safe}`;
+}
+
+/** Legacy key helper (kept for any old callers). Prefer objectKey(). */
 export function storageKey(tenantId: string, projectId: string, fileId: string, name: string): string {
   const safe = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
   return `${tenantId}/${projectId}/${fileId}-${safe}`;
 }
 
-export function validateUpload(mime: string, sizeBytes: number): { ok: true } | { ok: false; reason: string } {
-  if (!ALLOWED_MIME.has(mime)) return { ok: false, reason: 'unsupported_file_type' };
+function allowedMime(): Set<string> {
+  return config.STORAGE_ALLOW_ARCHIVES ? new Set([...DEFAULT_ALLOWED_MIME, ...ARCHIVE_MIME]) : DEFAULT_ALLOWED_MIME;
+}
+
+/**
+ * Validate an upload against the declared MIME, size, filename, and — when a
+ * buffer is provided — the actual file signature. Never trusts the browser
+ * Content-Type alone.
+ */
+export function validateUpload(mime: string, sizeBytes: number, filename?: string, data?: Buffer): { ok: true } | { ok: false; reason: string } {
+  if (!allowedMime().has(mime)) return { ok: false, reason: 'unsupported_file_type' };
   if (sizeBytes > config.MAX_FILE_BYTES) return { ok: false, reason: 'file_too_large' };
   if (sizeBytes <= 0) return { ok: false, reason: 'empty_file' };
+  if (filename) {
+    const f = isDangerousFilename(filename);
+    if (f.bad) return { ok: false, reason: f.reason };
+  }
+  if (data) {
+    const c = contentMatchesDeclared(mime, data);
+    if (!c.ok) return { ok: false, reason: c.reason };
+  }
   return { ok: true };
 }

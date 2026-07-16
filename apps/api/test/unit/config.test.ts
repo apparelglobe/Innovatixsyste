@@ -108,12 +108,18 @@ test('postmark transport requires a token', () => {
   );
 });
 
-test('s3 storage requires bucket + region', () => {
+test('s3 storage requires bucket + region + access key + secret', () => {
   const errs = validateProductionSecrets(validProd({ STORAGE_PROVIDER: 's3' }));
   assert.ok(errs.some((e) => /S3_BUCKET/.test(e)));
   assert.ok(errs.some((e) => /S3_REGION/.test(e)));
+  assert.ok(errs.some((e) => /S3_ACCESS_KEY_ID/.test(e)));
+  assert.ok(errs.some((e) => /S3_SECRET_ACCESS_KEY/.test(e)));
+  // Bucket + region alone is not enough — credentials are still required.
+  assert.ok(
+    validateProductionSecrets(validProd({ STORAGE_PROVIDER: 's3', S3_BUCKET: 'b', S3_REGION: 'us-east-1' })).some((e) => /S3_ACCESS_KEY_ID/.test(e)),
+  );
   assert.deepEqual(
-    validateProductionSecrets(validProd({ STORAGE_PROVIDER: 's3', S3_BUCKET: 'b', S3_REGION: 'us-east-1' })),
+    validateProductionSecrets(validProd({ STORAGE_PROVIDER: 's3', S3_BUCKET: 'b', S3_REGION: 'us-east-1', S3_ACCESS_KEY_ID: 'AKIA', S3_SECRET_ACCESS_KEY: 'secret' })),
     [],
   );
 });
