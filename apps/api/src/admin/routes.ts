@@ -23,6 +23,8 @@ import { enrichInvoice } from '../lib/invoices';
 import { config } from '../config';
 import { payments, renderInvoicePdfFrom } from '../billing';
 import { inviteClientUser } from './client-users';
+import { issueInvitation, resendInvitation, revokeInvitation } from '../invitations/service';
+import { invitationStatus } from '../lib/invitations';
 import { scanFile } from '../storage/types';
 
 type StaffCtx = { session: NonNullable<ReturnType<typeof verifyStaff>>; tenantId: string };
@@ -349,10 +351,14 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (!p) return reply.code(404).send({ ok: false });
     const b = z.object({ email: z.string().trim().email().max(200), firstName: z.string().trim().max(100).optional(), lastName: z.string().trim().max(100).optional(), role: z.enum(['OWNER', 'MEMBER']).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
-    const r = await inviteClientUser(prisma, { tenantId: ctx.tenantId, clientOrgId: p.clientOrg.id, orgName: p.clientOrg.name, email: b.data.email, firstName: b.data.firstName ? cleanText(b.data.firstName, 100) : null, lastName: b.data.lastName ? cleanText(b.data.lastName, 100) : null, role: b.data.role ?? 'MEMBER', staffId: ctx.session.sub });
-    if (!r.ok) return reply.code(409).send({ ok: false, message: 'That email is already used by another client organization.' });
+    const r = await inviteClientUser(prisma, { tenantId: ctx.tenantId, clientOrgId: p.clientOrg.id, orgName: p.clientOrg.name, email: b.data.email, firstName: b.data.firstName ? cleanText(b.data.firstName, 100) : null, lastName: b.data.lastName ? cleanText(b.data.lastName, 100) : null, role: b.data.role ?? 'MEMBER', actor: { staffUserId: ctx.session.sub } });
+    if (!r.ok) {
+      if (r.code === 'ALREADY_MEMBER') return reply.code(409).send({ ok: false, message: 'That person already has portal access for this client.' });
+      return reply.code(409).send({ ok: false, message: 'That email is already used by another client organization.' });
+    }
     await activity(ctx.tenantId, p.id, 'PROJECT', `Client contact invited: ${b.data.email}`);
-    return reply.send({ ok: true, userId: r.userId, isNew: r.isNew, tempPassword: r.tempPassword });
+    // No password/secret is ever returned — the setup link is emailed to the recipient.
+    return reply.send({ ok: true, invitationId: r.invitationId, refreshed: r.refreshed });
   });
 
   app.patch('/admin/client-users/:id', async (req, reply) => {
@@ -363,6 +369,60 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (!u) return reply.code(404).send({ ok: false });
     await prisma.clientUser.update({ where: { id: u.id }, data: { role: b.data.role } });
     await audit(ctx.tenantId, ctx.session.sub, 'ClientUser', u.id, 'CLIENT_USER_ROLE_CHANGED', { role: b.data.role });
+    return reply.send({ ok: true });
+  });
+
+  // ── Client invitations (secure onboarding — no temp passwords) ──
+  // List the pending/active invitations for a project's org (for the invite UI).
+  app.get('/admin/projects/:id/client-invitations', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'project:view'); if (!ctx) return;
+    const p = await scopedProject(ctx.tenantId, (req.params as { id: string }).id); if (!p) return reply.code(404).send({ ok: false });
+    const rows = await prisma.clientInvitation.findMany({
+      where: { tenantId: ctx.tenantId, clientOrgId: p.clientOrgId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, email: true, role: true, expiresAt: true, acceptedAt: true, revokedAt: true, lastSentAt: true, sendCount: true, createdAt: true },
+    });
+    const now = new Date();
+    // Never expose tokenHash. Surface a derived status for the UI.
+    const invitations = rows.map((r) => ({ id: r.id, email: r.email, role: r.role, status: invitationStatus(r, now), expiresAt: r.expiresAt, lastSentAt: r.lastSentAt, sendCount: r.sendCount, createdAt: r.createdAt }));
+    return reply.send({ ok: true, invitations });
+  });
+
+  // Create an invitation for an org (email a one-time setup link).
+  app.post('/admin/client-invitations', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'team:assign'); if (!ctx) return;
+    const b = z.object({ clientOrgId: z.string(), email: z.string().trim().email().max(200), firstName: z.string().trim().max(100).optional(), lastName: z.string().trim().max(100).optional(), role: z.enum(['OWNER', 'MEMBER']).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ ok: false });
+    const org = await prisma.clientOrg.findFirst({ where: { id: b.data.clientOrgId, tenantId: ctx.tenantId }, select: { id: true, name: true } });
+    if (!org) return reply.code(404).send({ ok: false });
+    const r = await issueInvitation(prisma, { tenantId: ctx.tenantId, clientOrgId: org.id, orgName: org.name, email: b.data.email, firstName: b.data.firstName ? cleanText(b.data.firstName, 100) : null, lastName: b.data.lastName ? cleanText(b.data.lastName, 100) : null, role: b.data.role ?? 'MEMBER', actor: { staffUserId: ctx.session.sub } });
+    if (!r.ok) {
+      if (r.code === 'ALREADY_ACTIVE_MEMBER') return reply.code(409).send({ ok: false, message: 'That person already has portal access for this client.' });
+      return reply.code(409).send({ ok: false, message: 'That email is already used by another client organization.' });
+    }
+    // No token/secret is ever returned.
+    return reply.send({ ok: true, invitationId: r.invitationId, refreshed: r.refreshed });
+  });
+
+  app.post('/admin/client-invitations/:id/resend', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'team:assign'); if (!ctx) return;
+    const r = await resendInvitation(prisma, { tenantId: ctx.tenantId, invitationId: (req.params as { id: string }).id, actor: { staffUserId: ctx.session.sub } });
+    if (!r.ok) {
+      if (r.code === 'NOT_FOUND') return reply.code(404).send({ ok: false });
+      return reply.code(409).send({ ok: false, message: 'This invitation can no longer be resent (already accepted or revoked).' });
+    }
+    return reply.send({ ok: true });
+  });
+
+  app.post('/admin/client-invitations/:id/revoke', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'team:assign'); if (!ctx) return;
+    const b = z.object({ reason: z.string().trim().max(300).optional() }).safeParse(req.body ?? {});
+    if (!b.success) return reply.code(400).send({ ok: false });
+    const r = await revokeInvitation(prisma, { tenantId: ctx.tenantId, invitationId: (req.params as { id: string }).id, reason: b.data.reason ? cleanText(b.data.reason, 300) : undefined, actor: { staffUserId: ctx.session.sub } });
+    if (!r.ok) {
+      if (r.code === 'NOT_FOUND') return reply.code(404).send({ ok: false });
+      return reply.code(409).send({ ok: false, message: 'This invitation has already been accepted and cannot be revoked.' });
+    }
     return reply.send({ ok: true });
   });
 

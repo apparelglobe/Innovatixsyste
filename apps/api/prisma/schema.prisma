@@ -366,6 +366,44 @@ model ClientUser {
   @@map("client_users")
 }
 
+// Secure client-user onboarding. A staff member (or an org OWNER) issues an
+// invitation; the recipient sets their own password via a one-time link. We NEVER
+// generate, store, log, or email a temporary password. Only the SHA-256 hash of a
+// 256-bit random token is persisted — the raw token exists only in the setup link.
+// Single-use, expiring, and revocable; app-layer tenant isolation (bare-string FKs,
+// consistent with the rest of the portal tables).
+model ClientInvitation {
+  id                   String         @id @default(cuid())
+  tenantId             String
+  clientOrgId          String
+  leadId               String? // origin lead when the invite came from a conversion
+  email                String
+  normalizedEmail      String
+  firstName            String?
+  lastName             String?
+  role                 ClientUserRole @default(MEMBER)
+
+  // Only the hash is stored; the raw token is never persisted.
+  tokenHash            String    @unique
+  expiresAt            DateTime
+  acceptedAt           DateTime?
+  acceptedByUserId     String?
+  revokedAt            DateTime?
+  revokedReason        String?
+
+  createdByStaffUserId String? // null when an org OWNER issues the invite (actor recorded in audit)
+  lastSentAt           DateTime?
+  sendCount            Int       @default(0)
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([tenantId, normalizedEmail])
+  @@index([tenantId, clientOrgId])
+  @@index([expiresAt])
+  @@map("client_invitations")
+}
+
 model Project {
   id              String        @id @default(cuid())
   tenantId        String

@@ -13,7 +13,7 @@ export default function AdminLeadsPage() {
   const { me, name } = useStaff();
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [converting, setConverting] = useState<string | null>(null);
-  const [result, setResult] = useState<{ email: string; tempPassword?: string } | null>(null);
+  const [result, setResult] = useState<{ email: string } | null>(null);
 
   const load = useCallback(async () => {
     const r = await apiJson<{ leads: Lead[] }>('/admin/leads');
@@ -24,7 +24,7 @@ export default function AdminLeadsPage() {
   async function convert(id: string) {
     setConverting(id);
     const res = await api(`/admin/leads/${id}/convert`, { method: 'POST', body: JSON.stringify({}) });
-    if (res.ok) { const j = await res.json(); setResult({ email: j.invitedEmail, tempPassword: j.tempPassword }); await load(); }
+    if (res.ok) { const j = await res.json(); setResult({ email: j.invitedEmail }); await load(); }
     setConverting(null);
   }
 
@@ -39,8 +39,8 @@ export default function AdminLeadsPage() {
 
         {result && (
           <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4 text-sm">
-            <div className="flex items-center gap-2 font-semibold text-emerald-300"><CheckCircle2 size={16} /> Converted — portal invitation sent to {result.email}</div>
-            {result.tempPassword && <div className="mt-1 text-neutral-400">Temporary password (dev): <code className="text-neutral-200">{result.tempPassword}</code></div>}
+            <div className="flex items-center gap-2 font-semibold text-emerald-300"><CheckCircle2 size={16} /> Converted — a secure setup link was emailed to {result.email}</div>
+            <div className="mt-1 text-neutral-400">The client chooses their own password from the link. No password is shared here.</div>
           </div>
         )}
 

@@ -15,6 +15,7 @@ import { config } from './config';
 import { assertDbReachable, prisma } from './db';
 import { registerLeadRoutes } from './routes/leads';
 import { registerBookingRoutes } from './routes/booking';
+import { registerInvitationRoutes } from './routes/invitations';
 import { registerDevOutboxRoutes } from './routes/dev-outbox';
 import { registerPortalRoutes } from './portal/routes';
 import { registerAdminRoutes } from './admin/routes';
@@ -66,6 +67,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     async (v1) => {
       await registerLeadRoutes(v1);
       await registerBookingRoutes(v1);
+      await registerInvitationRoutes(v1);
       await registerDevOutboxRoutes(v1);
       await registerPortalRoutes(v1);
       await registerAdminRoutes(v1);

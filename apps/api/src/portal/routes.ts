@@ -379,11 +379,14 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       firstName: b.data.firstName ? cleanText(b.data.firstName, 100) : null,
       lastName: b.data.lastName ? cleanText(b.data.lastName, 100) : null,
       role: b.data.role ?? 'MEMBER',
-      staffId: ctx.session.sub, // the owner is acting within their own org
+      actor: { clientUserId: ctx.session.sub }, // the owner is acting within their own org
     });
-    if (!result.ok) return reply.code(409).send({ ok: false, message: 'That email is already in use by another organization.' });
-    // Never return the temp password to the client — the invite email carries it.
-    return reply.send({ ok: true, userId: result.userId, isNew: result.isNew });
+    if (!result.ok) {
+      if (result.code === 'ALREADY_MEMBER') return reply.code(409).send({ ok: false, message: 'That teammate already has portal access.' });
+      return reply.code(409).send({ ok: false, message: 'That email is already in use by another organization.' });
+    }
+    // Never return a secret — the recipient gets a one-time setup link by email.
+    return reply.send({ ok: true, invitationId: result.invitationId });
   });
 
   // Change a teammate's role (OWNER/MEMBER) within the caller's org.

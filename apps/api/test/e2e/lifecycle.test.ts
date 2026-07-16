@@ -1,13 +1,13 @@
 /**
  * End-to-end business lifecycle across BOTH actors over real HTTP:
- *   lead (public) → staff converts → staff publishes report + requests approval
- *   → client sees them → client approves → staff invoices → client pays
- *   → file authorization.
+ *   lead (public) → staff converts → client accepts the emailed invitation +
+ *   sets a password → staff publishes report + requests approval → client sees
+ *   them → client approves → staff invoices → client pays → file authorization.
  *
  * Honest scope: every step is a real HTTP request against the built app on the
- * test database. Auth uses minted JWTs for a seeded staff user and the converted
- * client owner (equivalent to logging in). This is a genuine cross-actor flow,
- * not a single route in isolation.
+ * test database. Staff auth uses a minted JWT (equivalent to login); the OWNER is
+ * created for real by accepting the secure invitation. This is a genuine
+ * cross-actor onboarding-through-billing flow, not a single route in isolation.
  */
 import '../_setup';
 import { test, before, after } from 'node:test';
@@ -48,10 +48,17 @@ test('full lifecycle: lead → convert → report+approval → client approves �
   assert.equal(leadRes.statusCode, 202);
   const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
 
-  // 2) Staff converts the lead → org + owner + project
+  // 2) Staff converts the lead → org + project + a SECURE INVITATION (no user yet)
   const conv = await app.inject({ method: 'POST', url: `/v1/admin/leads/${lead.id}/convert`, headers: staffAuth, payload: '{}' });
   assert.equal(conv.statusCode, 200);
   const project = await prisma.project.findFirstOrThrow({ where: { tenantId, leadId: lead.id } });
+
+  // 2b) Client accepts the emailed invitation + sets a password → OWNER created.
+  const mail = await prisma.emailOutbox.findFirstOrThrow({ where: { tenantId, toAddress: email, type: 'PORTAL_INVITE' }, orderBy: { createdAt: 'desc' } });
+  const token = /setup-account\?token=([A-Za-z0-9\-_]+)/.exec(mail.textBody)?.[1];
+  assert.ok(token, 'invitation email should contain a setup token');
+  const accept = await app.inject({ method: 'POST', url: `/v1/auth/invitations/${token}/accept`, headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.8.8.${1 + ((Math.random() * 250) | 0)}` }, payload: JSON.stringify({ password: 'lifecycle-strong-pass-2026' }) });
+  assert.equal(accept.statusCode, 200);
   const owner = await prisma.clientUser.findFirstOrThrow({ where: { tenantId, clientOrgId: project.clientOrgId, role: 'OWNER' } });
   const ownerAuth = { authorization: `Bearer ${signSession({ sub: owner.id, org: project.clientOrgId, tenant: tenantId, email: owner.email })}`, 'content-type': 'application/json' };
 

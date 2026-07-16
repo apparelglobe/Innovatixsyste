@@ -87,14 +87,39 @@ export function sideEffectFailureAlertEmail(jobType: string, jobId: string, last
   return { subject, html, text: `${subject}\nJob ${jobId} reached max attempts.\nLast error: ${lastError}` };
 }
 
-/** Portal invitation sent to a newly-converted client. */
-export function portalInviteEmail(to: string, orgName: string, portalUrl: string, tempPassword: string): Built {
-  const subject = 'Your Innovatix client portal is ready';
-  const html = shell('Welcome to your Innovatix portal', `
-    <p style="color:#cbd5e1;line-height:1.6">Your project workspace for <strong style="color:#fff">${escapeHtml(orgName)}</strong> is set up. Sign in to track progress, review reports, approve milestones, and message your delivery team.</p>
-    <p style="color:#94a3b8;font-size:14px;line-height:1.6">Sign in at <a href="${escapeHtml(portalUrl)}" style="color:${BRAND}">${escapeHtml(portalUrl)}</a><br/>Email: ${escapeHtml(to)}<br/>Temporary password: <code>${escapeHtml(tempPassword)}</code></p>
-    <p style="color:#64748b;font-size:13px">For your security, please change your password after first sign-in.</p>`);
-  const text = `Welcome to your Innovatix portal for ${orgName}.\nSign in: ${portalUrl}\nEmail: ${to}\nTemporary password: ${tempPassword}\nPlease change your password after first sign-in.`;
+/**
+ * Secure client-portal invitation. Carries a one-time setup LINK — never a
+ * password. The recipient sets their own password on the linked page. No
+ * internal IDs, no secrets beyond the single-use setup URL itself.
+ *
+ * (Replaces the former `portalInviteEmail`, which emailed a temporary password.)
+ */
+export function clientInvitationEmail(params: {
+  orgName: string;
+  setupUrl: string;
+  expiresAt: Date;
+  supportEmail: string;
+}): Built {
+  const { orgName, setupUrl, expiresAt, supportEmail } = params;
+  const expires = expiresAt.toUTCString();
+  const subject = `Set up your Innovatix client portal — ${orgName}`;
+  const html = shell('Set up your Innovatix portal access', `
+    <p style="color:#cbd5e1;line-height:1.6">You've been invited to the <strong style="color:#fff">Innovatix Systems</strong> client portal for <strong style="color:#fff">${escapeHtml(orgName)}</strong>. From the portal you can track progress, review reports, approve milestones, view invoices, and message your delivery team.</p>
+    <p style="color:#cbd5e1;line-height:1.6">To get started, choose your own password using the secure link below:</p>
+    <p><a href="${escapeHtml(setupUrl)}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">Set up my account</a></p>
+    <p style="color:#94a3b8;font-size:13px;line-height:1.6">This one-time link expires on <strong style="color:#cbd5e1">${escapeHtml(expires)}</strong>. If it has expired, ask your Innovatix contact to resend the invitation.</p>
+    <p style="color:#64748b;font-size:12px;line-height:1.6;margin-top:16px">If you weren't expecting this invitation, no action is required — you can safely ignore this email. Questions? Contact us at <a href="mailto:${escapeHtml(supportEmail)}" style="color:${BRAND}">${escapeHtml(supportEmail)}</a>.</p>`);
+  const text = [
+    `You've been invited to the Innovatix Systems client portal for ${orgName}.`,
+    ``,
+    `Set up your account (choose your own password):`,
+    setupUrl,
+    ``,
+    `This one-time link expires on ${expires}. If it has expired, ask your Innovatix contact to resend the invitation.`,
+    ``,
+    `If you weren't expecting this invitation, no action is required — you can ignore this email.`,
+    `Questions? Contact ${supportEmail}.`,
+  ].join('\n');
   return { subject, html, text };
 }
 

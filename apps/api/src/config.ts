@@ -72,6 +72,9 @@ const schema = z.object({
   OUTBOX_POLL_MS: int(2000),
   OUTBOX_MAX_ATTEMPTS: int(6),
 
+  // Client-invitation setup-link lifetime. Configurable; safe 7-day default.
+  PORTAL_INVITE_TTL_HOURS: int(168),
+
   // Billing (invoices → payment link + webhook). 'stub' needs no external keys;
   // 'stripe' requires STRIPE_SECRET_KEY (enforced in production).
   PAYMENTS_PROVIDER: z.enum(['stub', 'stripe']).default('stub'),
