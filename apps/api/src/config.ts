@@ -5,6 +5,7 @@
  */
 import 'dotenv/config';
 import { z } from 'zod';
+import { validateProductionSecrets } from './config-validation';
 
 const bool = (def: boolean) =>
   z
@@ -57,8 +58,12 @@ const schema = z.object({
   S3_BUCKET: z.string().optional().default(''),
   S3_REGION: z.string().optional().default(''),
 
-  // Client portal (Launch 2)
+  // Client portal (Launch 2). Client and staff JWTs are signed with SEPARATE
+  // secrets so a client token can never be verified as a staff token even if
+  // one secret leaks. In production both must be set, strong, and distinct
+  // (enforced by validateProductionSecrets below).
   PORTAL_JWT_SECRET: z.string().default('dev-portal-secret-change-me'),
+  STAFF_JWT_SECRET: z.string().default('dev-staff-secret-change-me'),
   PORTAL_WEB_ORIGIN: z
     .string()
     .default('http://localhost:3001')
@@ -67,9 +72,11 @@ const schema = z.object({
   OUTBOX_POLL_MS: int(2000),
   OUTBOX_MAX_ATTEMPTS: int(6),
 
-  // Billing (invoices → payment link + webhook). 'stub' needs no external keys.
+  // Billing (invoices → payment link + webhook). 'stub' needs no external keys;
+  // 'stripe' requires STRIPE_SECRET_KEY (enforced in production).
   PAYMENTS_PROVIDER: z.enum(['stub', 'stripe']).default('stub'),
   PAYMENTS_WEBHOOK_SECRET: z.string().default('dev-payments-webhook-secret'),
+  STRIPE_SECRET_KEY: z.string().optional().default(''),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -77,6 +84,34 @@ if (!parsed.success) {
   const issues = parsed.error.issues.map((i) => `  • ${i.path.join('.')}: ${i.message}`).join('\n');
   // eslint-disable-next-line no-console
   console.error(`\n[config] Invalid environment:\n${issues}\n`);
+  process.exit(1);
+}
+
+// Fail fast: refuse to start in production with missing/insecure secrets.
+const secretProblems = validateProductionSecrets({
+  NODE_ENV: parsed.data.NODE_ENV,
+  PORTAL_JWT_SECRET: parsed.data.PORTAL_JWT_SECRET,
+  STAFF_JWT_SECRET: parsed.data.STAFF_JWT_SECRET,
+  ABUSE_HASH_SALT: parsed.data.ABUSE_HASH_SALT,
+  CALCOM_WEBHOOK_SECRET: parsed.data.CALCOM_WEBHOOK_SECRET,
+  PAYMENTS_WEBHOOK_SECRET: parsed.data.PAYMENTS_WEBHOOK_SECRET,
+  STORAGE_PROVIDER: parsed.data.STORAGE_PROVIDER,
+  S3_BUCKET: parsed.data.S3_BUCKET,
+  S3_REGION: parsed.data.S3_REGION,
+  EMAIL_TRANSPORT: parsed.data.EMAIL_TRANSPORT,
+  POSTMARK_SERVER_TOKEN: parsed.data.POSTMARK_SERVER_TOKEN,
+  PAYMENTS_PROVIDER: parsed.data.PAYMENTS_PROVIDER,
+  STRIPE_SECRET_KEY: parsed.data.STRIPE_SECRET_KEY,
+  ENCRYPTION_KEYS: {},
+});
+if (secretProblems.length > 0) {
+  const list = secretProblems.map((e) => `  • ${e}`).join('\n');
+  // eslint-disable-next-line no-console
+  console.error(
+    `\n[config] Refusing to start in production — insecure or missing secrets:\n${list}\n\n` +
+      `Set strong, unique values in the environment (never commit real secrets).\n` +
+      `See apps/api/.env.example and docs/DEPLOYMENT.md.\n`,
+  );
   process.exit(1);
 }
 

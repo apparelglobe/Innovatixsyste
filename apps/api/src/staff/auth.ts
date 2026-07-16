@@ -15,13 +15,13 @@ const TTL_SECONDS = 7 * 24 * 60 * 60;
 export type StaffSession = { sub: string; role: StaffRole; tenant: string; email: string };
 
 export function signStaff(s: StaffSession): string {
-  return jwt.sign(s, config.PORTAL_JWT_SECRET + ':staff', { expiresIn: TTL_SECONDS });
+  return jwt.sign(s, config.STAFF_JWT_SECRET, { expiresIn: TTL_SECONDS });
 }
 
 export function verifyStaff(token: string | undefined): StaffSession | null {
   if (!token) return null;
   try {
-    const p = jwt.verify(token, config.PORTAL_JWT_SECRET + ':staff') as StaffSession;
+    const p = jwt.verify(token, config.STAFF_JWT_SECRET) as StaffSession;
     if (!p.sub || !p.role || !p.tenant) return null;
     return p;
   } catch {
