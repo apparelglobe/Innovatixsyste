@@ -1,0 +1,342 @@
+/**
+ * Client-portal API (/v1/portal/*). All data routes require a valid session and
+ * are scoped to the caller's tenant + client organization — a client can never
+ * read another client's projects. Login is rate-limited and returns a generic
+ * error (never reveals whether the email exists).
+ */
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
+import { prisma } from '../db';
+import { resolveDefaultTenant } from '../tenant';
+import { hashAbuseIdentifier } from '../lib/crypto';
+import { checkRateLimit } from '../lib/ratelimit';
+import { normalizeEmail, cleanMultiline } from '../lib/sanitize';
+import { enrichApprovals } from '../lib/approvals';
+import { enrichInvoice } from '../lib/invoices';
+import { renderInvoicePdfFrom } from '../billing';
+import { markInvoicePaid } from '../billing/mark-paid';
+import { config } from '../config';
+import {
+  PORTAL_COOKIE, PORTAL_COOKIE_OPTS, signSession, verifySession, verifyPassword,
+} from './auth';
+import { storage } from '../storage';
+import { notifyStaff } from '../notifications/service';
+
+type Ctx = { session: NonNullable<ReturnType<typeof verifySession>> };
+
+async function requireSession(req: FastifyRequest, reply: FastifyReply): Promise<Ctx | null> {
+  const cookie = (req as unknown as { cookies?: Record<string, string> }).cookies?.[PORTAL_COOKIE];
+  const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || undefined;
+  const session = verifySession(cookie || bearer);
+  if (!session) {
+    reply.code(401).send({ ok: false, message: 'Not authenticated' });
+    return null;
+  }
+  // Defense in depth: the token's tenant must match the resolved tenant.
+  const tenant = await resolveDefaultTenant(prisma);
+  if (session.tenant !== tenant.id) {
+    reply.code(401).send({ ok: false, message: 'Not authenticated' });
+    return null;
+  }
+  return { session };
+}
+
+const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(320),
+  password: z.string().min(1).max(200),
+});
+
+export async function registerPortalRoutes(app: FastifyInstance): Promise<void> {
+  // ── Auth ──
+  app.post('/portal/auth/login', async (req, reply) => {
+    const tenant = await resolveDefaultTenant(prisma);
+    const rl = await checkRateLimit(prisma, tenant.id, `portal-login:${hashAbuseIdentifier(req.ip)}`, new Date(), 10);
+    if (rl.limited) return reply.code(429).send({ ok: false, message: 'Too many attempts. Please try again shortly.' });
+
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ ok: false, message: 'Invalid email or password.' });
+
+    const normalizedEmail = normalizeEmail(parsed.data.email);
+    const user = await prisma.clientUser.findUnique({
+      where: { tenantId_normalizedEmail: { tenantId: tenant.id, normalizedEmail } },
+      include: { clientOrg: true },
+    });
+    const ok = user ? await verifyPassword(parsed.data.password, user.passwordHash) : false;
+    if (!user || !ok) {
+      return reply.code(401).send({ ok: false, message: 'Invalid email or password.' });
+    }
+
+    await prisma.clientUser.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    const token = signSession({ sub: user.id, org: user.clientOrgId, tenant: tenant.id, email: user.email });
+    reply.setCookie(PORTAL_COOKIE, token, PORTAL_COOKIE_OPTS);
+    return reply.send({
+      ok: true,
+      token,
+      user: { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
+      org: { name: user.clientOrg.name },
+    });
+  });
+
+  app.post('/portal/auth/logout', async (_req, reply) => {
+    reply.clearCookie(PORTAL_COOKIE, { path: '/' });
+    return reply.send({ ok: true });
+  });
+
+  app.get('/portal/me', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const user = await prisma.clientUser.findFirst({
+      where: { id: ctx.session.sub, clientOrgId: ctx.session.org, tenantId: ctx.session.tenant },
+      include: { clientOrg: true },
+    });
+    if (!user) return reply.code(401).send({ ok: false });
+    return reply.send({
+      ok: true,
+      user: { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
+      org: { name: user.clientOrg.name },
+    });
+  });
+
+  // ── Overview: the client's active project + summary ──
+  app.get('/portal/overview', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const { org, tenant } = ctx.session;
+
+    const project = await prisma.project.findFirst({
+      where: { tenantId: tenant, clientOrgId: org },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        milestones: { orderBy: { sequence: 'asc' } },
+        members: true,
+        reports: { orderBy: { publishedAt: 'desc' }, take: 1 },
+        approvals: { where: { status: 'PENDING' } },
+        activities: { orderBy: { createdAt: 'desc' }, take: 6 },
+      },
+    });
+    if (!project) return reply.send({ ok: true, project: null });
+
+    const milestonesDone = project.milestones.filter((m) => m.status === 'DONE').length;
+    const nextMilestone = project.milestones.find((m) => m.status !== 'DONE') ?? null;
+
+    return reply.send({
+      ok: true,
+      project: {
+        id: project.id,
+        name: project.name,
+        status: project.status,
+        percentComplete: project.percentComplete,
+        dueDate: project.dueDate,
+        milestonesDone,
+        milestonesTotal: project.milestones.length,
+        openApprovals: project.approvals.length,
+        pendingApproval: project.approvals[0] && { id: project.approvals[0].id, subject: project.approvals[0].subject },
+        nextMilestone: nextMilestone && { name: nextMilestone.name, dueDate: nextMilestone.dueDate },
+        milestones: project.milestones.map((m) => ({ id: m.id, name: m.name, status: m.status, dueDate: m.dueDate })),
+        latestReport: project.reports[0] && {
+          title: project.reports[0].title, kind: project.reports[0].kind,
+          summary: project.reports[0].summary, publishedAt: project.reports[0].publishedAt,
+        },
+        activities: project.activities.map((a) => ({ type: a.type, message: a.message, createdAt: a.createdAt })),
+        team: project.members.map((m) => ({ name: m.name, role: m.role })),
+      },
+    });
+  });
+
+  // ── Project detail (scoped) ──
+  app.get('/portal/projects/:id', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const id = (req.params as { id: string }).id;
+    const project = await prisma.project.findFirst({
+      where: { id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, // scope enforced
+      include: {
+        milestones: { orderBy: { sequence: 'asc' } },
+        reports: { orderBy: { publishedAt: 'desc' } },
+        approvals: { orderBy: { createdAt: 'desc' } },
+        invoices: { orderBy: { createdAt: 'desc' } },
+        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true }, orderBy: { uploadedAt: 'desc' } },
+        members: true,
+        messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!project) return reply.code(404).send({ ok: false, message: 'Not found' });
+    return reply.send({ ok: true, project: { ...project, approvals: await enrichApprovals(prisma, project.approvals) } });
+  });
+
+  // ── The caller's active project (full detail) — no id needed ──
+  app.get('/portal/project', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const project = await prisma.project.findFirst({
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        milestones: { orderBy: { sequence: 'asc' } },
+        reports: { orderBy: { publishedAt: 'desc' } },
+        approvals: { orderBy: { createdAt: 'desc' } },
+        invoices: { orderBy: { createdAt: 'desc' } },
+        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true }, orderBy: { uploadedAt: 'desc' } },
+        members: true,
+        messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
+      },
+    });
+    return reply.send({ ok: true, project: project ? { ...project, approvals: await enrichApprovals(prisma, project.approvals) } : null });
+  });
+
+  // ── Send a message to the delivery team (client → team) ──
+  app.post('/portal/messages', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const body = z.object({ body: z.string().trim().min(1).max(4000) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ ok: false });
+
+    const project = await prisma.project.findFirst({
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!project) return reply.code(404).send({ ok: false });
+
+    const message = await prisma.portalMessage.create({
+      data: { tenantId: ctx.session.tenant, projectId: project.id, authorType: 'CLIENT', authorUserId: ctx.session.sub, body: cleanMultiline(body.data.body, 4000) },
+    });
+    await prisma.portalActivity.create({
+      data: { tenantId: ctx.session.tenant, projectId: project.id, type: 'MESSAGE', message: 'You sent a message to the delivery team' },
+    });
+    await notifyStaff(prisma, ctx.session.tenant, { type: 'CLIENT_MESSAGE', title: 'New client message', body: 'A client replied on their project.', projectId: project.id, linkPath: `/admin/projects/${project.id}`, email: true });
+    return reply.send({ ok: true, message: { id: message.id, authorType: message.authorType, body: message.body, createdAt: message.createdAt } });
+  });
+
+  // ── Invoice detail (client) — scoped, line items + billing contact, no internal fields ──
+  app.get('/portal/invoices/:id', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const inv = await prisma.invoice.findFirst({
+      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org } },
+      include: { lineItems: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!inv) return reply.code(404).send({ ok: false });
+    return reply.send({ ok: true, invoice: await enrichInvoice(inv) });
+  });
+
+  // ── Invoice PDF (client) — scoped, rendered on demand, DRAFT never exposed ──
+  app.get('/portal/invoices/:id/pdf', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const inv = await prisma.invoice.findFirst({
+      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, status: { not: 'DRAFT' }, project: { clientOrgId: ctx.session.org } },
+      include: { lineItems: { orderBy: { createdAt: 'asc' } }, project: { select: { clientOrg: { select: { name: true } } } } },
+    });
+    if (!inv) return reply.code(404).send({ ok: false });
+    const pdf = renderInvoicePdfFrom(await enrichInvoice(inv), inv.project.clientOrg.name);
+    reply.header('content-type', 'application/pdf');
+    reply.header('content-disposition', `inline; filename="${inv.number}.pdf"`);
+    return reply.send(pdf);
+  });
+
+  // ── Demo payment (stub provider, non-prod only) — simulates the provider's
+  //    paid callback so the /pay page can complete the loop without Stripe. ──
+  app.post('/portal/invoices/:id/pay-demo', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (config.NODE_ENV === 'production' || config.PAYMENTS_PROVIDER !== 'stub') {
+      return reply.code(404).send({ ok: false });
+    }
+    // Scope: the invoice must belong to the caller's org and not be a draft.
+    const inv = await prisma.invoice.findFirst({
+      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, status: { not: 'DRAFT' }, project: { clientOrgId: ctx.session.org } },
+      select: { id: true },
+    });
+    if (!inv) return reply.code(404).send({ ok: false });
+    const result = await markInvoicePaid(prisma, inv.id, 'demo-pay');
+    return reply.send({ ok: true, result });
+  });
+
+  // ── Read receipts (client marks the team's messages as read) ──
+  app.post('/portal/messages/read', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const r = await prisma.portalMessage.updateMany({
+      where: { tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org }, authorType: 'TEAM', internal: false, readByClientAt: null },
+      data: { readByClientAt: new Date() },
+    });
+    return reply.send({ ok: true, marked: r.count });
+  });
+
+  // ── Secure file download (client) — authed + scoped + clientVisible only ──
+  app.get('/portal/files/:id/download', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const file = await prisma.projectFile.findFirst({
+      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, deletedAt: null, clientVisible: true, isCurrent: true, project: { clientOrgId: ctx.session.org } },
+    });
+    if (!file?.storageKey) return reply.code(404).send({ ok: false });
+    const signed = await storage().getSignedUrl(file.storageKey, 300);
+    if (signed) return reply.redirect(signed); // S3: short-lived signed URL
+    reply.header('content-type', file.mimeType || 'application/octet-stream');
+    reply.header('content-disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
+    return reply.send(await storage().getStream(file.storageKey));
+  });
+
+  // ── Milestone/approval decision (write) ──
+  app.post('/portal/approvals/:id/decide', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const id = (req.params as { id: string }).id;
+    const body = z.object({ decision: z.enum(['APPROVED', 'CHANGES_REQUESTED']), note: z.string().max(2000).optional() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ ok: false });
+
+    // Scope: the approval must belong to a project owned by the caller's org.
+    const approval = await prisma.approval.findFirst({
+      where: { id, tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org } },
+    });
+    if (!approval) return reply.code(404).send({ ok: false });
+    // State machine: an approval can be decided exactly once. Re-deciding a closed approval
+    // would otherwise re-trigger the milestone-DONE mutation and re-notify the team.
+    if (approval.status !== 'PENDING') return reply.code(409).send({ ok: false, message: 'This approval has already been decided.' });
+
+    const approved = body.data.decision === 'APPROVED';
+    await prisma.$transaction([
+      prisma.approval.update({
+        where: { id: approval.id },
+        data: { status: body.data.decision, decidedByUserId: ctx.session.sub, decidedAt: new Date(), note: body.data.note ?? null },
+      }),
+      prisma.portalActivity.create({
+        data: { tenantId: ctx.session.tenant, projectId: approval.projectId, type: 'APPROVAL', message: `Approval ${approved ? 'granted' : 'sent back for changes'}: ${approval.subject}` },
+      }),
+      prisma.auditEvent.create({
+        data: { tenantId: ctx.session.tenant, entityType: 'Approval', entityId: approval.id, action: `APPROVAL_${body.data.decision}`, actorType: 'ADMIN', actorId: ctx.session.sub },
+      }),
+      // The approval SERVICE is the only path that mutates the related object:
+      // an APPROVED milestone approval marks the milestone DONE.
+      ...(approved && approval.type === 'MILESTONE' && approval.milestoneId
+        ? [prisma.milestone.update({ where: { id: approval.milestoneId }, data: { status: 'DONE', completedAt: new Date() } })]
+        : []),
+    ]);
+    // Notify the delivery team of the client's decision.
+    await notifyStaff(prisma, ctx.session.tenant, { type: 'APPROVAL_COMPLETED', title: `Client ${approved ? 'approved' : 'requested changes'}: ${approval.subject}`, projectId: approval.projectId, linkPath: `/admin/projects/${approval.projectId}`, email: true });
+    return reply.send({ ok: true });
+  });
+
+  // ── Notifications (client) ──
+  app.get('/portal/notifications', async (req, reply) => {
+    const ctx = await requireSession(req, reply); if (!ctx) return;
+    const where = { tenantId: ctx.session.tenant, recipientType: 'CLIENT' as const, recipientId: ctx.session.sub };
+    const [items, unread] = await Promise.all([
+      prisma.notification.findMany({ where, orderBy: { createdAt: 'desc' }, take: 30 }),
+      prisma.notification.count({ where: { ...where, read: false } }),
+    ]);
+    return reply.send({ ok: true, unread, notifications: items.map((n) => ({ id: n.id, type: n.type, title: n.title, body: n.body, linkPath: n.linkPath, read: n.read, createdAt: n.createdAt })) });
+  });
+  app.post('/portal/notifications/:id/read', async (req, reply) => {
+    const ctx = await requireSession(req, reply); if (!ctx) return;
+    await prisma.notification.updateMany({ where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, recipientType: 'CLIENT', recipientId: ctx.session.sub }, data: { read: true, readAt: new Date() } });
+    return reply.send({ ok: true });
+  });
+  app.post('/portal/notifications/read-all', async (req, reply) => {
+    const ctx = await requireSession(req, reply); if (!ctx) return;
+    await prisma.notification.updateMany({ where: { tenantId: ctx.session.tenant, recipientType: 'CLIENT', recipientId: ctx.session.sub, read: false }, data: { read: true, readAt: new Date() } });
+    return reply.send({ ok: true });
+  });
+}

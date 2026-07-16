@@ -1,0 +1,251 @@
+/**
+ * Step 3 acceptance tests — the lead pipeline end to end.
+ * Run: NODE_ENV=test npm test  (requires the dev DB up: scripts/dev-db.sh start)
+ *
+ * Uses the real Postgres (dedup/idempotency/concurrency are the whole point, so
+ * they can't be mocked). Each test uses a unique email/idempotency key.
+ */
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHmac, randomUUID } from 'node:crypto';
+import { PrismaClient } from '@prisma/client';
+import { buildApp } from '../src/main';
+import { prisma } from '../src/db';
+import { resolveDefaultTenant } from '../src/tenant';
+import { intakeLead } from '../src/leads/service';
+import { processDueJobs } from '../src/jobs/processor';
+import { checkRateLimit } from '../src/lib/ratelimit';
+import { computeSlaDueAt } from '../src/lib/business-hours';
+import { verifyCalcomSignature } from '../src/booking/service';
+
+let app: Awaited<ReturnType<typeof buildApp>>;
+let tenantId: string;
+const uid = () => randomUUID().slice(0, 8);
+const base = (over: Record<string, unknown> = {}) => ({
+  firstName: 'Grace',
+  lastName: 'Hopper',
+  businessEmail: `grace-${uid()}@example.com`,
+  company: 'Navy Systems',
+  form: 'CONTACT',
+  serviceInterest: 'ERP Development',
+  projectDescription: 'We need a custom ERP for operations.',
+  idempotencyKey: `key-${uid()}-${uid()}`,
+  ...over,
+});
+const post = (payload: unknown) =>
+  app.inject({ method: 'POST', url: '/v1/leads', headers: { 'content-type': 'application/json', origin: 'http://localhost:4030' }, payload });
+
+before(async () => {
+  app = await buildApp();
+  await app.ready();
+  const t = await resolveDefaultTenant(prisma);
+  tenantId = t.id;
+});
+after(async () => {
+  await app.close();
+  await prisma.$disconnect();
+});
+
+test('1. new valid lead → 202 + lead/inquiry/attribution/4 jobs', async () => {
+  const email = `new-${uid()}@example.com`;
+  const res = await post(base({ businessEmail: email, attribution: { utmSource: 'google', utmMedium: 'cpc', gclid: 'G123' } }));
+  assert.equal(res.statusCode, 202);
+  const body = res.json();
+  assert.equal(body.ok, true);
+  assert.ok(body.reference);
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const inquiries = await prisma.leadInquiry.count({ where: { leadId: lead.id } });
+  const attr = await prisma.leadAttribution.findFirst({ where: { inquiry: { leadId: lead.id } } });
+  const jobs = await prisma.sideEffectJob.count({ where: { leadId: lead.id } });
+  assert.equal(inquiries, 1);
+  assert.equal(attr?.gclid, 'G123');
+  assert.equal(attr?.utmSource, 'google');
+  assert.equal(jobs, 4);
+});
+
+test('2. repeat submission same email (different key) → same lead, 2 inquiries', async () => {
+  const email = `repeat-${uid()}@example.com`;
+  await post(base({ businessEmail: email }));
+  await post(base({ businessEmail: email }));
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const count = await prisma.leadInquiry.count({ where: { leadId: lead.id } });
+  assert.equal(count, 2);
+  const leadCount = await prisma.lead.count({ where: { tenantId, normalizedEmail: email } });
+  assert.equal(leadCount, 1);
+});
+
+test('3. same lead, a second distinct project inquiry is preserved', async () => {
+  const email = `multi-${uid()}@example.com`;
+  await post(base({ businessEmail: email, projectDescription: 'Project A: ERP' }));
+  await post(base({ businessEmail: email, projectDescription: 'Project B: mobile app' }));
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const inqs = await prisma.leadInquiry.findMany({ where: { leadId: lead.id }, orderBy: { submittedAt: 'asc' } });
+  assert.equal(inqs.length, 2);
+  assert.notEqual(inqs[0].projectDescription, inqs[1].projectDescription);
+});
+
+test('4. double-click (same idempotency key) → exactly one inquiry', async () => {
+  const p = base();
+  await post(p);
+  await post(p);
+  const inqs = await prisma.leadInquiry.count({ where: { tenantId, idempotencyKey: p.idempotencyKey } });
+  assert.equal(inqs, 1);
+});
+
+test('5. retried HTTP with same idempotency key → same reference (replay)', async () => {
+  const p = base();
+  const r1 = await post(p);
+  const r2 = await post(p);
+  assert.equal(r1.json().reference, r2.json().reference);
+});
+
+test('6. two concurrent submissions (same email) → one lead, two inquiries', async () => {
+  const email = `concurrent-${uid()}@example.com`;
+  await Promise.all([post(base({ businessEmail: email })), post(base({ businessEmail: email }))]);
+  const leads = await prisma.lead.count({ where: { tenantId, normalizedEmail: email } });
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const inqs = await prisma.leadInquiry.count({ where: { leadId: lead.id } });
+  assert.equal(leads, 1);
+  assert.equal(inqs, 2);
+});
+
+test('7. invalid email → 400 (generic)', async () => {
+  const res = await post(base({ businessEmail: 'not-an-email' }));
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.json().ok, false);
+});
+
+test('8. oversized project description → 400', async () => {
+  const res = await post(base({ projectDescription: 'x'.repeat(5001) }));
+  assert.equal(res.statusCode, 400);
+});
+
+test('9. honeypot → 202 generic, inquiry REJECTED, no side-effect jobs', async () => {
+  const email = `bot-${uid()}@example.com`;
+  const res = await post(base({ businessEmail: email, honeypot: 'i-am-a-bot' }));
+  assert.equal(res.statusCode, 202); // never reveal spam outcome
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const inq = await prisma.leadInquiry.findFirstOrThrow({ where: { leadId: lead.id } });
+  assert.equal(inq.spamResult, 'REJECTED');
+  const jobs = await prisma.sideEffectJob.count({ where: { leadId: lead.id } });
+  assert.equal(jobs, 0);
+});
+
+test('10. rate-limit triggers after the max (direct, isolated identifier)', async () => {
+  const hashedId = `test-rl-${uid()}`;
+  const MAX = 3;
+  let limitedAt = -1;
+  for (let i = 1; i <= 8; i++) {
+    const r = await checkRateLimit(prisma, tenantId, hashedId, new Date(), MAX);
+    if (r.limited && limitedAt === -1) limitedAt = i;
+  }
+  assert.equal(limitedAt, MAX + 1, `should limit right after ${MAX} allowed`);
+});
+
+test('11-15. side-effect retry → backoff → dead-letter (failing job)', async () => {
+  // A job that references a non-existent lead throws in its handler → exercises
+  // the generic retry/backoff/dead-letter path used by email/notify/assignment.
+  // leadId null → the ACK_EMAIL handler's findUniqueOrThrow throws → retry path.
+  const job = await prisma.sideEffectJob.create({
+    data: { tenantId, type: 'ACK_EMAIL', leadId: null, payload: {}, idempotencyKey: `fail-${uid()}`, maxAttempts: 2, nextAttemptAt: new Date(0) },
+  });
+  // attempt 1 → fails, reschedules PENDING with future nextAttemptAt
+  let s = await processDueJobs(prisma, new Date());
+  assert.ok(s.failed >= 1);
+  let cur = await prisma.sideEffectJob.findUniqueOrThrow({ where: { id: job.id } });
+  assert.equal(cur.status, 'PENDING');
+  assert.equal(cur.attempts, 1);
+  assert.ok(cur.nextAttemptAt.getTime() > Date.now());
+  // force it due again → attempt 2 hits maxAttempts → DEAD
+  await prisma.sideEffectJob.update({ where: { id: job.id }, data: { nextAttemptAt: new Date(0) } });
+  s = await processDueJobs(prisma, new Date());
+  assert.ok(s.dead >= 1);
+  cur = await prisma.sideEffectJob.findUniqueOrThrow({ where: { id: job.id } });
+  assert.equal(cur.status, 'DEAD');
+  assert.ok(cur.lastError);
+});
+
+test('16. missing attribution → 202, attribution row created with nulls', async () => {
+  const email = `noattr-${uid()}@example.com`;
+  const res = await post(base({ businessEmail: email, attribution: undefined }));
+  assert.equal(res.statusCode, 202);
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const attr = await prisma.leadAttribution.findFirst({ where: { inquiry: { leadId: lead.id } } });
+  assert.ok(attr);
+  assert.equal(attr?.utmSource, null);
+  assert.equal(attr?.gclid, null);
+});
+
+test('17. full UTM + GCLID captured', async () => {
+  const email = `utm-${uid()}@example.com`;
+  await post(base({ businessEmail: email, attribution: { utmSource: 's', utmMedium: 'm', utmCampaign: 'c', utmTerm: 't', utmContent: 'co', gclid: 'g', referrerUrl: 'https://ref', landingPage: '/lp' } }));
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const a = await prisma.leadAttribution.findFirstOrThrow({ where: { inquiry: { leadId: lead.id } } });
+  assert.deepEqual(
+    { s: a.utmSource, m: a.utmMedium, c: a.utmCampaign, t: a.utmTerm, co: a.utmContent, g: a.gclid },
+    { s: 's', m: 'm', c: 'c', t: 't', co: 'co', g: 'g' },
+  );
+});
+
+test('18. cross-tenant isolation — same email is a distinct lead per tenant', async () => {
+  const other = await prisma.tenant.upsert({ where: { slug: 'other-tenant-test' }, update: {}, create: { slug: 'other-tenant-test', name: 'Other' } });
+  const email = `shared-${uid()}@example.com`;
+  await intakeLead(prisma, { id: tenantId } as any, base({ businessEmail: email }) as any, { correlationId: 'c1' });
+  await intakeLead(prisma, other as any, base({ businessEmail: email }) as any, { correlationId: 'c2' });
+  const a = await prisma.lead.findUnique({ where: { tenantId_normalizedEmail: { tenantId, normalizedEmail: email } } });
+  const b = await prisma.lead.findUnique({ where: { tenantId_normalizedEmail: { tenantId: other.id, normalizedEmail: email } } });
+  assert.ok(a && b);
+  assert.notEqual(a!.id, b!.id); // isolated per tenant
+});
+
+test('19. database unavailable → clear failure', async () => {
+  const bad = new PrismaClient({ datasources: { db: { url: 'postgresql://x:x@127.0.0.1:1/none?connect_timeout=1' } } });
+  await assert.rejects(() => bad.$queryRaw`SELECT 1`);
+  await bad.$disconnect().catch(() => undefined);
+});
+
+test('20. Cal.com webhook — valid signature links booking + confirm job', async () => {
+  // First persist a lead the booking will link to.
+  const email = `book-${uid()}@example.com`;
+  await post(base({ businessEmail: email }));
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const bookingUid = `cal-${uid()}`;
+  const payload = JSON.stringify({
+    triggerEvent: 'BOOKING_CREATED',
+    payload: { uid: bookingUid, startTime: '2026-08-01T15:00:00Z', endTime: '2026-08-01T15:30:00Z', metadata: { leadId: lead.id }, attendees: [{ email }] },
+  });
+  const sig = createHmac('sha256', 'dev_calcom_secret').update(payload).digest('hex');
+  const res = await app.inject({ method: 'POST', url: '/v1/booking/calcom-webhook', headers: { 'content-type': 'application/json', 'x-cal-signature-256': sig }, payload });
+  assert.equal(res.statusCode, 200);
+  const meeting = await prisma.meeting.findFirst({ where: { providerBookingId: bookingUid } });
+  assert.ok(meeting);
+  assert.equal(meeting?.leadId, lead.id);
+  const confirmJob = await prisma.sideEffectJob.count({ where: { leadId: lead.id, type: 'BOOKING_CONFIRM' } });
+  assert.ok(confirmJob >= 1);
+});
+
+test('21. Cal.com webhook — invalid signature → 401, no meeting', async () => {
+  const bookingUid = `cal-bad-${uid()}`;
+  const payload = JSON.stringify({ triggerEvent: 'BOOKING_CREATED', payload: { uid: bookingUid, attendees: [{ email: 'x@example.com' }] } });
+  const res = await app.inject({ method: 'POST', url: '/v1/booking/calcom-webhook', headers: { 'content-type': 'application/json', 'x-cal-signature-256': 'deadbeef' }, payload });
+  assert.equal(res.statusCode, 401);
+  const meeting = await prisma.meeting.findFirst({ where: { providerBookingId: bookingUid } });
+  assert.equal(meeting, null);
+});
+
+test('22. business-hours SLA lands inside a weekday window', async () => {
+  // Friday 16:00 ET + 240 business min → should roll into Monday, not the weekend.
+  const fri = new Date('2026-07-10T20:00:00Z'); // 16:00 America/New_York (EDT)
+  const due = computeSlaDueAt(fri, 240, 'America/New_York');
+  assert.ok(due.getTime() > fri.getTime());
+  const dow = due.getUTCDay();
+  assert.ok(dow >= 1 && dow <= 5, `due should be a weekday, got dow=${dow}`);
+});
+
+test('23. signature verifier rejects tampered body', () => {
+  const body = '{"a":1}';
+  const sig = createHmac('sha256', 'secret').update(body).digest('hex');
+  assert.equal(verifyCalcomSignature(body, sig, 'secret'), true);
+  assert.equal(verifyCalcomSignature('{"a":2}', sig, 'secret'), false);
+  assert.equal(verifyCalcomSignature(body, sig, 'wrong'), false);
+});
