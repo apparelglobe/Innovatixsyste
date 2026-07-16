@@ -286,11 +286,22 @@ isolation (one missing `where` = cross-org leak) — add FK/RLS; (4) no CSP; (5)
 ## 12. Production Readiness
 
 **Ready now:** 13 published marketing pages (QC-gated, SEO-enforced, responsive); lead pipeline; auth realms +
-staff RBAC + audit + rate limiting + webhook HMAC + sanitization + idempotency; typecheck/build/CI.
+staff RBAC + audit + rate limiting + webhook HMAC + sanitization + idempotency; typecheck/build/CI; real Stripe
+payments + S3 storage + ClamAV scanning (provider-gated); tenant-isolation hardening; **observability** (correlation
+ids, structured logs, `/livez` `/readyz` `/metrics`, in-process Prometheus, error/alert abstraction with dead-job /
+payment-fail / scan-fail / auth-fail alerts); **verified backup→restore test** + backup/DR + staging runbooks.
 
-**Blocks prod:** (1) not committed/pushed/deployed; (2) default secrets no prod guard; (3) payments stub (no Stripe);
-(4) S3 + AV stubs; (5) client role unenforced + app-layer-only isolation; (6) no authz/billing/portal tests; (7) PM2
-runs dev tsx not `dist/`; (8) legal pages stubbed but linked; (9) no SSR guard + leaked dev password.
+**Production-readiness docs:** `MONITORING.md` (metrics + alert catalog), `BACKUP-DR.md` (retention, restore
+procedure, the verified restore-test results, PITR + DR runbook), `STAGING.md` (env-var matrix, deploy + rollback
+checklists). Also `TENANT-ISOLATION.md`, `STRIPE-PAYMENTS.md`, `OBJECT-STORAGE.md`, `MALWARE-SCANNING.md`,
+`SECURE-INVITATIONS.md`.
+
+**Blocks prod (remaining):** (1) not pushed/deployed (committed locally only, no remote); (2) default secrets have no
+hard prod fail-fast guard; (3) client OWNER/MEMBER role still unenforced; (4) PM2 must run `dist/` not dev tsx;
+(5) legal pages stubbed but linked; (6) no SSR guard + a leaked dev password to remove; (7) staging + automated
+nightly backups/WAL archiving specified in the runbooks but not yet provisioned (prod infra tasks).
+*Resolved since last handoff:* real Stripe payments, S3 storage, ClamAV scanning, tenant-isolation hardening,
+observability, and a verified restore test.
 
 **Nice-to-have post-launch:** SLA-breach sweeper; remaining service/nav/blog pages; CSP; enum-ify status columns;
 missing indexes; real PDF templating; client self-serve invites + deactivation; SMS.

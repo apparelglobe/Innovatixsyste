@@ -93,6 +93,15 @@ const schema = z.object({
   OUTBOX_POLL_MS: int(2000),
   OUTBOX_MAX_ATTEMPTS: int(6),
 
+  // Observability. Errors/alerts default to structured console output; set a DSN
+  // or a Slack-compatible webhook to fan them out. Never required.
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  SENTRY_DSN: z.string().optional().default(''),
+  ALERT_WEBHOOK_URL: z.string().optional().default(''), // Slack/Mattermost incoming webhook
+  METRICS_ENABLED: bool(true),
+  AUTH_FAIL_ALERT_THRESHOLD: int(25), // 401s within the window before an alert fires
+  AUTH_FAIL_ALERT_WINDOW_MS: int(60_000),
+
   // Client-invitation setup-link lifetime. Configurable; safe 7-day default.
   PORTAL_INVITE_TTL_HOURS: int(168),
 

@@ -13,6 +13,9 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { config } from './config';
 import { assertDbReachable, prisma } from './db';
+import { storage } from './storage';
+import { correlationId, captureError, noteAuthFailure } from './observability';
+import { incr, observeHttpLatency, renderPrometheus } from './observability/metrics';
 import { registerLeadRoutes } from './routes/leads';
 import { registerBookingRoutes } from './routes/booking';
 import { registerInvitationRoutes } from './routes/invitations';
@@ -28,11 +31,30 @@ export async function buildApp(): Promise<FastifyInstance> {
     // trustProxy: reconstruct the real client IP behind nginx (for hashed rate-limit id).
     trustProxy: true,
     bodyLimit: 32 * 1024, // 32KB request cap
+    // Correlation id: reuse an inbound x-request-id / x-correlation-id else mint one.
+    genReqId: (req) => correlationId(req.headers as Record<string, unknown>),
     logger: {
-      level: config.NODE_ENV === 'test' ? 'silent' : 'info',
+      level: config.NODE_ENV === 'test' ? 'silent' : config.LOG_LEVEL,
       // Never log secrets or sensitive request fields.
-      redact: { paths: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-cal-signature-256"]'], remove: true },
+      redact: { paths: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-cal-signature-256"]', 'req.headers["stripe-signature"]'], remove: true },
     },
+  });
+
+  // ── Observability: correlation id header, latency + status metrics, safe error
+  //    boundary (every uncaught error is captured, never leaks internals). ──
+  app.addHook('onSend', async (req, reply, payload) => {
+    reply.header('x-correlation-id', String(req.id));
+    return payload;
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    observeHttpLatency(reply.elapsedTime ?? 0);
+    incr('http_requests_total', { method: req.method, status: String(reply.statusCode) });
+    if (reply.statusCode === 401) noteAuthFailure(Date.now(), req.routeOptions?.url ?? req.url);
+  });
+  app.setErrorHandler((err, req, reply) => {
+    const status = (err as { statusCode?: number }).statusCode;
+    if (!status || status >= 500) captureError(err, { reqId: req.id, method: req.method, url: req.url });
+    reply.code(status && status < 500 ? status : 500).send({ ok: false, message: status && status < 500 ? (err as Error).message : 'Internal error' });
   });
 
   // Capture the raw JSON body (needed for webhook signature verification) while
@@ -61,6 +83,39 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.get('/health', async () => ({ ok: true, service: 'innovatix-api', ts: Date.now() }));
+
+  // Liveness: the process is up (no dependency checks — never flaps the pod).
+  app.get('/livez', async () => ({ ok: true, status: 'alive', ts: Date.now() }));
+
+  // Readiness: dependencies healthy enough to serve traffic. 503 if the DB is down.
+  app.get('/readyz', async (_req, reply) => {
+    const checks: Record<string, string> = { scanner: config.MALWARE_SCANNER_PROVIDER, storage_provider: config.STORAGE_PROVIDER };
+    let ready = true;
+    try { await prisma.$queryRaw`SELECT 1`; checks.db = 'ok'; } catch { checks.db = 'down'; ready = false; }
+    try { await storage().head('__readiness_probe__'); checks.storage = 'ok'; } catch { checks.storage = 'error'; }
+    return reply.code(ready ? 200 : 503).send({ ok: ready, checks, ts: Date.now() });
+  });
+
+  // Prometheus metrics (restrict to the internal network / scrape token at nginx).
+  app.get('/metrics', async (_req, reply) => {
+    if (!config.METRICS_ENABLED) return reply.code(404).send();
+    const [pendingJobs, deadJobs, pendingScans, deadScans, scanningFiles] = await Promise.all([
+      prisma.sideEffectJob.count({ where: { status: 'PENDING' } }),
+      prisma.sideEffectJob.count({ where: { status: 'DEAD' } }),
+      prisma.fileScan.count({ where: { status: 'PENDING' } }),
+      prisma.fileScan.count({ where: { status: 'DEAD' } }),
+      prisma.projectFile.count({ where: { state: 'SCANNING' } }),
+    ]).catch(() => [0, 0, 0, 0, 0]);
+    const extra = [
+      `sideeffect_jobs_pending ${pendingJobs}`,
+      `sideeffect_jobs_dead ${deadJobs}`,
+      `scan_jobs_pending ${pendingScans}`,
+      `scan_jobs_dead ${deadScans}`,
+      `files_scanning ${scanningFiles}`,
+    ].join('\n');
+    reply.header('content-type', 'text/plain; version=0.0.4');
+    return renderPrometheus() + extra + '\n';
+  });
 
   // Versioned API under /v1.
   await app.register(

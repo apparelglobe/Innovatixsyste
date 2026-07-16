@@ -14,6 +14,8 @@ import {
   sideEffectFailureAlertEmail,
 } from '../email/templates';
 import { config } from '../config';
+import { alert } from '../observability';
+import { incr } from '../observability/metrics';
 
 const BACKOFF_BASE_MS = 30_000;
 const BACKOFF_CAP_MS = 60 * 60 * 1000;
@@ -154,6 +156,8 @@ export async function processDueJobs(prisma: PrismaClient, now: Date = new Date(
       if (job.attempts >= job.maxAttempts) {
         await prisma.sideEffectJob.update({ where: { id: job.id }, data: { status: 'DEAD', lastError: msg } });
         summary.dead++;
+        incr('sideeffect_jobs_dead_total', { type: String(job.type) });
+        alert({ kind: 'job.dead', level: 'critical', message: `Side-effect job ${job.type} dead-lettered after ${job.attempts} attempts`, tenantId: job.tenantId, data: { jobId: job.id, type: job.type, lastError: msg } });
         // one-time dead-letter alert (best-effort; not itself retried into a loop)
         await prisma.sideEffectJob.create({
           data: {

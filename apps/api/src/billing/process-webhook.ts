@@ -18,6 +18,8 @@
 import type { PrismaClient } from '@prisma/client';
 import { markInvoicePaid } from './mark-paid';
 import { notifyStaff } from '../notifications/service';
+import { alert } from '../observability';
+import { incr } from '../observability/metrics';
 import type { ParsedWebhook } from './gateway';
 
 export type ProcessResult =
@@ -72,6 +74,8 @@ export async function processProviderWebhook(
     const reason = parsed.failureReason ?? 'payment failed';
     if (payment) await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED', failureReason: reason, providerEventId: eventId, paymentIntentId: parsed.paymentIntentId ?? payment.paymentIntentId } });
     await auditFail('PAYMENT_FAILED', reason);
+    incr('payments_total', { result: 'failed' });
+    alert({ kind: 'payment.failed', level: 'warning', message: `Payment failed for invoice ${invoice.number}: ${reason}`, tenantId: invoice.tenantId, data: { invoiceId } });
     await notifyStaff(prisma, invoice.tenantId, { type: 'INVOICE_CREATED', title: `Payment failed for ${invoice.number}`, body: reason, projectId: invoice.projectId, linkPath: `/admin/projects/${invoice.projectId}`, email: false }).catch(() => undefined);
     return 'failed_recorded';
   }
@@ -107,5 +111,6 @@ export async function processProviderWebhook(
   }
 
   const res = await markInvoicePaid(prisma, invoiceId, `webhook:${providerName}`);
+  if (res === 'paid') incr('payments_total', { result: 'paid' });
   return res === 'paid' ? 'paid' : 'already';
 }

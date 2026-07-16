@@ -18,6 +18,8 @@ import { config } from '../config';
 import { storage } from '../storage';
 import { scanner, isRetryable, type ScanOutcome } from './scanner';
 import { notifyClientOrg, notifyStaff } from '../notifications/service';
+import { alert } from '../observability';
+import { incr } from '../observability/metrics';
 
 const BACKOFF_BASE_MS = 30_000;
 const BACKOFF_CAP_MS = 60 * 60 * 1000;
@@ -74,6 +76,7 @@ async function applyOutcome(prisma: PrismaClient, scanId: string, file: ProjectF
     errorCode: outcome.errorCode ?? null, completedAt: new Date(),
   };
 
+  incr('file_scans_total', { result: outcome.result });
   if (outcome.result === 'CLEAN') {
     await prisma.fileScan.update({ where: { id: scanId }, data: { ...evidence, status: 'SUCCEEDED', lastError: null } });
     await finalizeAvailable(prisma, file);
@@ -82,6 +85,7 @@ async function applyOutcome(prisma: PrismaClient, scanId: string, file: ProjectF
   if (outcome.result === 'INFECTED') {
     await prisma.fileScan.update({ where: { id: scanId }, data: { ...evidence, status: 'SUCCEEDED' } });
     await quarantine(prisma, file, outcome);
+    alert({ kind: 'scan.quarantined', level: 'warning', message: `Malware quarantined: ${outcome.threatName ?? 'threat'}`, tenantId: file.tenantId, data: { fileId: file.id, threat: outcome.threatName } });
     return;
   }
   if (outcome.result === 'UNSUPPORTED' || outcome.result === 'SKIPPED') {
@@ -94,6 +98,7 @@ async function applyOutcome(prisma: PrismaClient, scanId: string, file: ProjectF
   if (isRetryable(outcome.result)) {
     if (scan.attempts >= scan.maxAttempts) {
       await prisma.fileScan.update({ where: { id: scanId }, data: { ...evidence, status: 'DEAD', lastError: outcome.errorCode ?? outcome.result } });
+      alert({ kind: 'scan.failed', level: 'critical', message: `Malware scan dead-lettered after ${scan.attempts} attempts (${outcome.errorCode ?? outcome.result}) — file stays unavailable`, tenantId: file.tenantId, data: { fileId: file.id, scanId } });
       await notifyStaff(prisma, file.tenantId, { type: 'FILE_UPLOADED', title: `Malware scan failed permanently for a file`, body: `Scan gave up after ${scan.attempts} attempts (${outcome.errorCode ?? outcome.result}). The file remains unavailable.`, projectId: file.projectId, linkPath: `/admin/projects/${file.projectId}`, email: false }).catch(() => undefined);
     } else {
       await prisma.fileScan.update({ where: { id: scanId }, data: { ...evidence, status: 'PENDING', retryCount: { increment: 1 }, lastError: outcome.errorCode ?? outcome.result, nextAttemptAt: new Date(Date.now() + backoffMs(scan.attempts)) } });
