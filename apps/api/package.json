@@ -14,8 +14,15 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force && npm run db:seed",
     "db:studio": "prisma studio",
-    "test": "tsx --test test/**/*.test.ts",
-    "test:e2e": "tsx --test test/e2e/**/*.test.ts"
+    "test:db:prepare": "node scripts/test-db.mjs prepare",
+    "test:db:reset": "node scripts/test-db.mjs reset",
+    "pretest": "node scripts/test-db.mjs prepare",
+    "test": "node scripts/run-tests.mjs all",
+    "test:unit": "node scripts/run-tests.mjs unit",
+    "pretest:integration": "node scripts/test-db.mjs prepare",
+    "test:integration": "node scripts/run-tests.mjs integration",
+    "pretest:e2e": "node scripts/test-db.mjs prepare",
+    "test:e2e": "node scripts/run-tests.mjs e2e"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.1",

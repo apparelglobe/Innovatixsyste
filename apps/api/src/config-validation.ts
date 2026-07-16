@@ -24,6 +24,11 @@ export const DEV_SECRET_DEFAULTS = [
 /** Minimum length for any production secret / salt / webhook signing key. */
 export const MIN_SECRET_LENGTH = 32;
 
+/** The dev outbox email viewer must NEVER be enabled in production, whatever the flag. */
+export function isDevOutboxEnabled(nodeEnv: string, flag: boolean): boolean {
+  return nodeEnv !== 'production' && flag;
+}
+
 export interface ProdSecretEnv {
   NODE_ENV: string;
   PORTAL_JWT_SECRET: string;

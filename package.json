@@ -8,7 +8,13 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "test": "npm run test -w apps/api",
+    "test:unit": "npm run test:unit -w apps/api",
+    "test:integration": "npm run test:integration -w apps/api",
+    "test:e2e": "npm run test:e2e -w apps/api",
+    "test:db:prepare": "npm run test:db:prepare -w apps/api",
+    "test:db:reset": "npm run test:db:reset -w apps/api"
   },
   "devDependencies": {
     "turbo": "^2.1.3",

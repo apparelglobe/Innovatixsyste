@@ -2,15 +2,53 @@ name: CI
 on:
   push: { branches: [main] }
   pull_request: {}
+
 jobs:
-  build:
+  test-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       SITE_URL: https://innovatixsystems.com
+      NEXT_PUBLIC_SITE_URL: https://innovatixsystems.com
+      # Test database — name contains "test", so the fail-closed guard allows it.
+      DATABASE_URL_TEST: postgresql://innovatix:innovatix_dev_pw@localhost:5432/innovatix_test?schema=public
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: innovatix
+          POSTGRES_PASSWORD: innovatix_dev_pw
+          POSTGRES_DB: innovatix_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U innovatix"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
+
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
+
+      - name: Prepare test database (apply migrations)
+        run: npm run test:db:prepare
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        timeout-minutes: 5
+        run: npm run test:unit
+
+      - name: Integration tests
+        timeout-minutes: 8
+        run: npm run test:integration
+
+      - name: E2E tests
+        timeout-minutes: 8
+        run: npm run test:e2e
+
+      - name: Build
+        run: npm run build

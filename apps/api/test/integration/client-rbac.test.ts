@@ -7,15 +7,14 @@
  * manage billing / invite / change roles; OWNER can; cross-org OWNER gets 404;
  * a role forged in the request body is ignored; staff RBAC is untouched.
  */
+import '../_setup'; // MUST be first — points DATABASE_URL at the isolated test DB
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { buildApp } from '../src/main';
-import { prisma } from '../src/db';
-import { resolveDefaultTenant } from '../src/tenant';
-import { signSession } from '../src/portal/auth';
-import { clientCan } from '../src/client/rbac';
-import { can as staffCan } from '../src/staff/rbac';
+import { buildApp } from '../../src/main';
+import { prisma } from '../../src/db';
+import { resolveDefaultTenant } from '../../src/tenant';
+import { signSession } from '../../src/portal/auth';
 
 const uid = () => randomUUID().slice(0, 8);
 
@@ -69,24 +68,7 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-// ── Pure matrix ──────────────────────────────────────────────────────────────
-test('matrix: OWNER may decide/pay/invite; MEMBER may not', () => {
-  for (const a of ['approval:decide', 'invoice:pay', 'billing:manage', 'client-user:invite', 'client-user:role-change'] as const) {
-    assert.equal(clientCan('OWNER', a), true, `OWNER should have ${a}`);
-    assert.equal(clientCan('MEMBER', a), false, `MEMBER should NOT have ${a}`);
-  }
-});
-test('matrix: MEMBER may read + participate', () => {
-  for (const a of ['project:read', 'report:read', 'file:read', 'message:send', 'invoice:read', 'approval:comment'] as const) {
-    assert.equal(clientCan('MEMBER', a), true, `MEMBER should have ${a}`);
-  }
-});
-test('staff RBAC is unaffected', () => {
-  assert.equal(staffCan('ADMIN', 'lead:convert'), true);
-  assert.equal(staffCan('ENGINEER', 'invoice:write'), false);
-  assert.equal(staffCan('ENGINEER', 'project:view'), true);
-  assert.equal(staffCan('VIEWER', 'project:view'), true);
-});
+// (Pure matrix assertions live in test/unit/rbac.test.ts.)
 
 // ── Approvals ────────────────────────────────────────────────────────────────
 test('OWNER can decide an approval', async () => {

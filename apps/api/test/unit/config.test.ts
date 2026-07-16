@@ -7,10 +7,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateProductionSecrets,
+  isDevOutboxEnabled,
   MIN_SECRET_LENGTH,
   DEV_SECRET_DEFAULTS,
   type ProdSecretEnv,
-} from '../src/config-validation';
+} from '../../src/config-validation';
+
+test('dev outbox viewer is disabled in production regardless of flag', () => {
+  assert.equal(isDevOutboxEnabled('production', true), false);
+  assert.equal(isDevOutboxEnabled('production', false), false);
+  assert.equal(isDevOutboxEnabled('development', true), true);
+  assert.equal(isDevOutboxEnabled('test', true), true);
+});
 
 // Distinct, strong (≥ MIN_SECRET_LENGTH), non-default value per seed.
 const strong = (seed: string) => `prod-${seed}-${'x'.repeat(MIN_SECRET_LENGTH)}`;

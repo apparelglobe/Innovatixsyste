@@ -5,7 +5,7 @@
  */
 import 'dotenv/config';
 import { z } from 'zod';
-import { validateProductionSecrets } from './config-validation';
+import { validateProductionSecrets, isDevOutboxEnabled } from './config-validation';
 
 const bool = (def: boolean) =>
   z
@@ -119,4 +119,4 @@ export const config = parsed.data;
 export type Config = typeof config;
 
 /** The dev outbox viewer is NEVER available in production, regardless of flag. */
-export const devOutboxViewerEnabled = config.NODE_ENV !== 'production' && config.DEV_OUTBOX_VIEWER;
+export const devOutboxViewerEnabled = isDevOutboxEnabled(config.NODE_ENV, config.DEV_OUTBOX_VIEWER);

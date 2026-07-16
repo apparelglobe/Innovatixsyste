@@ -5,18 +5,20 @@
  * Uses the real Postgres (dedup/idempotency/concurrency are the whole point, so
  * they can't be mocked). Each test uses a unique email/idempotency key.
  */
+import '../_setup'; // MUST be first — points DATABASE_URL at the isolated test DB
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { buildApp } from '../src/main';
-import { prisma } from '../src/db';
-import { resolveDefaultTenant } from '../src/tenant';
-import { intakeLead } from '../src/leads/service';
-import { processDueJobs } from '../src/jobs/processor';
-import { checkRateLimit } from '../src/lib/ratelimit';
-import { computeSlaDueAt } from '../src/lib/business-hours';
-import { verifyCalcomSignature } from '../src/booking/service';
+import { buildApp } from '../../src/main';
+import { prisma } from '../../src/db';
+import { config } from '../../src/config';
+import { resolveDefaultTenant } from '../../src/tenant';
+import { intakeLead } from '../../src/leads/service';
+import { processDueJobs } from '../../src/jobs/processor';
+import { checkRateLimit } from '../../src/lib/ratelimit';
+import { computeSlaDueAt } from '../../src/lib/business-hours';
+import { verifyCalcomSignature } from '../../src/booking/service';
 
 let app: Awaited<ReturnType<typeof buildApp>>;
 let tenantId: string;
@@ -32,8 +34,11 @@ const base = (over: Record<string, unknown> = {}) => ({
   idempotencyKey: `key-${uid()}-${uid()}`,
   ...over,
 });
-const post = (payload: unknown) =>
-  app.inject({ method: 'POST', url: '/v1/leads', headers: { 'content-type': 'application/json', origin: 'http://localhost:4030' }, payload });
+// Each submission gets a UNIQUE client IP (via X-Forwarded-For; trustProxy is on),
+// so the durable DB-backed rate limiter never bleeds one test into another.
+const uniqueIp = () => `10.${1 + ((Math.random() * 250) | 0)}.${(Math.random() * 250) | 0}.${1 + ((Math.random() * 250) | 0)}`;
+const post = (payload: unknown, ip: string = uniqueIp()) =>
+  app.inject({ method: 'POST', url: '/v1/leads', headers: { 'content-type': 'application/json', origin: 'http://localhost:4030', 'x-forwarded-for': ip }, payload });
 
 before(async () => {
   app = await buildApp();
@@ -140,6 +145,14 @@ test('10. rate-limit triggers after the max (direct, isolated identifier)', asyn
     if (r.limited && limitedAt === -1) limitedAt = i;
   }
   assert.equal(limitedAt, MAX + 1, `should limit right after ${MAX} allowed`);
+});
+
+test('10b. HTTP rate limit — repeated submissions from one IP → 429 (proves enforcement)', async () => {
+  const ip = uniqueIp(); // fixed for this test only; other tests use their own IPs
+  const max = config.LEADS_RATE_LIMIT_MAX;
+  let last = 0;
+  for (let i = 1; i <= max + 1; i++) last = (await post(base(), ip)).statusCode;
+  assert.equal(last, 429, `submission ${max + 1} from one IP should be rate limited`);
 });
 
 test('11-15. side-effect retry → backoff → dead-letter (failing job)', async () => {
