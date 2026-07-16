@@ -14,7 +14,8 @@ export type Project = {
   members: { id: string; name: string; role: string }[];
   messages: { id: string; authorType: 'CLIENT' | 'TEAM'; body: string; createdAt: string }[];
 };
-export type Me = { user: { firstName?: string; lastName?: string }; org: { name: string } };
+export type ClientRole = 'OWNER' | 'MEMBER';
+export type Me = { user: { firstName?: string; lastName?: string; role?: ClientRole }; org: { name: string } };
 
 export function usePortal() {
   const router = useRouter();
@@ -32,5 +33,6 @@ export function usePortal() {
   useEffect(() => { load(); }, [load]);
 
   const userName = me ? [me.user.firstName, me.user.lastName].filter(Boolean).join(' ') || 'Client' : '';
-  return { me, project, userName, reload: load, loading: !me || project === undefined };
+  const isOwner = me?.user.role === 'OWNER';
+  return { me, project, userName, isOwner, reload: load, loading: !me || project === undefined };
 }

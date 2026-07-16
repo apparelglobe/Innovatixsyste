@@ -18,19 +18,25 @@ export default function PayPage() {
   const [inv, setInv] = useState<Invoice | null | undefined>(undefined);
   const [paying, setPaying] = useState(false);
   const [done, setDone] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     apiJson<{ ok: boolean; invoice: Invoice }>(`/portal/invoices/${id}`).then((r) => {
       if (r.status === 401) { router.replace('/login'); return; }
       setInv(r.status === 200 ? r.body.invoice : null);
     });
+    // Only account OWNERs may pay — the button is gated (and the backend enforces it).
+    apiJson<{ user?: { role?: string } }>('/portal/me').then((r) => setIsOwner(r.body?.user?.role === 'OWNER'));
   }, [id, router]);
 
   async function pay() {
+    setError(null);
     setPaying(true);
     const r = await api(`/portal/invoices/${id}/pay-demo`, { method: 'POST' });
     setPaying(false);
-    if (r.ok) { setDone(true); setTimeout(() => router.replace(`/invoices/${id}`), 1400); }
+    if (r.ok) { setDone(true); setTimeout(() => router.replace(`/invoices/${id}`), 1400); return; }
+    setError(r.status === 403 ? 'Only an account owner can pay invoices.' : 'Payment could not be completed. Please try again.');
   }
 
   if (inv === undefined) return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
@@ -54,10 +60,14 @@ export default function PayPage() {
               <span className="text-sm text-neutral-400">Amount due</span>
               <span className="text-3xl font-extrabold text-white">{fmtMoney(inv.amountCents, inv.currency)}</span>
             </div>
-            <button onClick={pay} disabled={paying}
+            <button onClick={pay} disabled={paying || !isOwner}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
               {paying ? <Loader2 size={16} className="animate-spin" /> : <Lock size={15} />} Pay {fmtMoney(inv.amountCents, inv.currency)}
             </button>
+            {!isOwner && (
+              <p className="mt-3 text-center text-xs text-amber-400/90">Only an account owner can pay invoices. Ask an owner on your team to complete payment.</p>
+            )}
+            {error && <p className="mt-3 text-center text-xs text-red-400">{error}</p>}
             <p className="mt-3 text-center text-[11px] text-neutral-600">Demo checkout — no real charge. Replaced by the provider’s hosted page in production.</p>
           </>
         )}

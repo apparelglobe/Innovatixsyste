@@ -24,13 +24,14 @@ const STATUS_LABEL: Record<string, string> = { DISCOVERY: 'Discovery', IN_PROGRE
 
 export default function OverviewPage() {
   const router = useRouter();
-  const [me, setMe] = useState<{ user: { firstName?: string; lastName?: string }; org: { name: string } } | null>(null);
+  const [me, setMe] = useState<{ user: { firstName?: string; lastName?: string; role?: string }; org: { name: string } } | null>(null);
   const [data, setData] = useState<Overview | null>(null);
   const [deciding, setDeciding] = useState(false);
   const [note, setNote] = useState('');
+  const [decideError, setDecideError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const meRes = await apiJson<{ ok: boolean; user?: { firstName?: string; lastName?: string }; org?: { name: string } }>('/portal/me');
+    const meRes = await apiJson<{ ok: boolean; user?: { firstName?: string; lastName?: string; role?: string }; org?: { name: string } }>('/portal/me');
     if (meRes.status === 401) { router.replace('/login'); return; }
     setMe({ user: meRes.body.user || {}, org: meRes.body.org || { name: '' } });
     const ov = await apiJson<Overview>('/portal/overview');
@@ -39,12 +40,17 @@ export default function OverviewPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Only account OWNERs may decide approvals (the backend enforces this too).
+  const isOwner = me?.user.role === 'OWNER';
+
   async function decide(id: string, decision: 'APPROVED' | 'CHANGES_REQUESTED') {
+    setDecideError(null);
     setDeciding(true);
-    await api(`/portal/approvals/${id}/decide`, { method: 'POST', body: JSON.stringify({ decision, note: note.trim() || undefined }) });
+    const r = await api(`/portal/approvals/${id}/decide`, { method: 'POST', body: JSON.stringify({ decision, note: note.trim() || undefined }) });
+    setDeciding(false);
+    if (!r.ok) { setDecideError(r.status === 403 ? 'Only an account owner can approve or request changes.' : 'Could not submit your decision. Please try again.'); return; }
     setNote('');
     await load();
-    setDeciding(false);
   }
 
   if (!me || !data) {
@@ -94,15 +100,22 @@ export default function OverviewPage() {
                   <div className="text-xs font-bold uppercase tracking-widest text-primary-light">Action needed</div>
                   <p className="mt-1 font-semibold text-white">{p.pendingApproval.subject}</p>
                 </div>
-                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000}
-                  placeholder="Add a note (optional) — shared with the delivery team"
-                  className="mt-3 w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
-                <div className="mt-3 flex justify-end gap-2">
-                  <button disabled={deciding} onClick={() => decide(p.pendingApproval!.id, 'CHANGES_REQUESTED')}
-                    className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Request changes</button>
-                  <button disabled={deciding} onClick={() => decide(p.pendingApproval!.id, 'APPROVED')}
-                    className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Approve</button>
-                </div>
+                {isOwner ? (
+                  <>
+                    <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000}
+                      placeholder="Add a note (optional) — shared with the delivery team"
+                      className="mt-3 w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button disabled={deciding} onClick={() => decide(p.pendingApproval!.id, 'CHANGES_REQUESTED')}
+                        className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Request changes</button>
+                      <button disabled={deciding} onClick={() => decide(p.pendingApproval!.id, 'APPROVED')}
+                        className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Approve</button>
+                    </div>
+                    {decideError && <p className="mt-2 text-right text-xs text-red-400">{decideError}</p>}
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-amber-400/90">Only an account owner can approve or request changes. Ask an owner on your team to review this.</p>
+                )}
               </div>
             )}
 

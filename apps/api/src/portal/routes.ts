@@ -10,7 +10,7 @@ import { prisma } from '../db';
 import { resolveDefaultTenant } from '../tenant';
 import { hashAbuseIdentifier } from '../lib/crypto';
 import { checkRateLimit } from '../lib/ratelimit';
-import { normalizeEmail, cleanMultiline } from '../lib/sanitize';
+import { normalizeEmail, cleanMultiline, cleanText } from '../lib/sanitize';
 import { enrichApprovals } from '../lib/approvals';
 import { enrichInvoice } from '../lib/invoices';
 import { renderInvoicePdfFrom } from '../billing';
@@ -21,6 +21,8 @@ import {
 } from './auth';
 import { storage } from '../storage';
 import { notifyStaff } from '../notifications/service';
+import { requireClientPermission } from '../client/authz';
+import { inviteClientUser } from '../admin/client-users';
 
 type Ctx = { session: NonNullable<ReturnType<typeof verifySession>> };
 
@@ -188,6 +190,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/messages', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'message:send'))) return;
     const body = z.object({ body: z.string().trim().min(1).max(4000) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ ok: false });
 
@@ -243,6 +246,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (config.NODE_ENV === 'production' || config.PAYMENTS_PROVIDER !== 'stub') {
       return reply.code(404).send({ ok: false });
     }
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay'))) return;
     // Scope: the invoice must belong to the caller's org and not be a draft.
     const inv = await prisma.invoice.findFirst({
       where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, status: { not: 'DRAFT' }, project: { clientOrgId: ctx.session.org } },
@@ -283,6 +287,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/approvals/:id/decide', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'approval:decide'))) return;
     const id = (req.params as { id: string }).id;
     const body = z.object({ decision: z.enum(['APPROVED', 'CHANGES_REQUESTED']), note: z.string().max(2000).optional() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ ok: false });
@@ -337,6 +342,85 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/notifications/read-all', async (req, reply) => {
     const ctx = await requireSession(req, reply); if (!ctx) return;
     await prisma.notification.updateMany({ where: { tenantId: ctx.session.tenant, recipientType: 'CLIENT', recipientId: ctx.session.sub, read: false }, data: { read: true, readAt: new Date() } });
+    return reply.send({ ok: true });
+  });
+
+  // ── Client-user management (OWNER only) ─────────────────────────────
+  // List the caller's organization users (for the owner's team management view).
+  app.get('/portal/client-users', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:read'))) return;
+    const users = await prisma.clientUser.findMany({
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, lastLoginAt: true, createdAt: true },
+    });
+    return reply.send({ ok: true, users });
+  });
+
+  // Invite a teammate into the caller's org.
+  app.post('/portal/client-users', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:invite'))) return;
+    const b = z.object({
+      email: z.string().trim().email().max(200),
+      firstName: z.string().trim().max(100).optional(),
+      lastName: z.string().trim().max(100).optional(),
+      role: z.enum(['OWNER', 'MEMBER']).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ ok: false });
+    const org = await prisma.clientOrg.findFirst({ where: { id: ctx.session.org, tenantId: ctx.session.tenant }, select: { id: true, name: true } });
+    if (!org) return reply.code(404).send({ ok: false });
+    const result = await inviteClientUser(prisma, {
+      tenantId: ctx.session.tenant, clientOrgId: org.id, orgName: org.name,
+      email: b.data.email,
+      firstName: b.data.firstName ? cleanText(b.data.firstName, 100) : null,
+      lastName: b.data.lastName ? cleanText(b.data.lastName, 100) : null,
+      role: b.data.role ?? 'MEMBER',
+      staffId: ctx.session.sub, // the owner is acting within their own org
+    });
+    if (!result.ok) return reply.code(409).send({ ok: false, message: 'That email is already in use by another organization.' });
+    // Never return the temp password to the client — the invite email carries it.
+    return reply.send({ ok: true, userId: result.userId, isNew: result.isNew });
+  });
+
+  // Change a teammate's role (OWNER/MEMBER) within the caller's org.
+  app.patch('/portal/client-users/:id', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:role-change'))) return;
+    const id = (req.params as { id: string }).id;
+    const b = z.object({ role: z.enum(['OWNER', 'MEMBER']) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ ok: false });
+    // Prevent self-lockout: an owner cannot demote/change their own role here.
+    if (id === ctx.session.sub) return reply.code(400).send({ ok: false, message: 'You cannot change your own role.' });
+    // Org scope: only users in the caller's org (404 otherwise — no cross-org reveal).
+    const target = await prisma.clientUser.findFirst({ where: { id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { id: true } });
+    if (!target) return reply.code(404).send({ ok: false });
+    await prisma.clientUser.update({ where: { id: target.id }, data: { role: b.data.role } });
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ClientUser', entityId: target.id, action: 'CLIENT_USER_ROLE_CHANGED', actorType: 'ADMIN', actorId: ctx.session.sub, data: { role: b.data.role } } }).catch(() => undefined);
+    return reply.send({ ok: true });
+  });
+
+  // ── Billing-contact management (OWNER only) — set which client user is the
+  //    billing contact on one of the org's invoices. ──
+  app.patch('/portal/invoices/:id/billing-contact', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'billing:manage'))) return;
+    const id = (req.params as { id: string }).id;
+    const b = z.object({ billingContactUserId: z.string().min(1).nullable() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ ok: false });
+    const inv = await prisma.invoice.findFirst({ where: { id, tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org } }, select: { id: true } });
+    if (!inv) return reply.code(404).send({ ok: false });
+    if (b.data.billingContactUserId) {
+      const contact = await prisma.clientUser.findFirst({ where: { id: b.data.billingContactUserId, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { id: true } });
+      if (!contact) return reply.code(400).send({ ok: false, message: 'Billing contact must be a user in your organization.' });
+    }
+    await prisma.invoice.update({ where: { id: inv.id }, data: { billingContactUserId: b.data.billingContactUserId } });
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'Invoice', entityId: inv.id, action: 'INVOICE_BILLING_CONTACT_SET', actorType: 'ADMIN', actorId: ctx.session.sub } }).catch(() => undefined);
     return reply.send({ ok: true });
   });
 }
