@@ -1,5 +1,17 @@
 import './globals.css';
-export const metadata = { title: 'Innovatix Platform', robots: { index: false, follow: false } };
+import { Inter } from 'next/font/google';
+
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
+
+export const metadata = {
+  title: 'Innovatix Portal',
+  robots: { index: false, follow: false }, // the portal is never indexed
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (<html lang="en"><body>{children}</body></html>);
+  return (
+    <html lang="en" className={inter.variable}>
+      <body>{children}</body>
+    </html>
+  );
 }

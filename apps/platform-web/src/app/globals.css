@@ -1,2 +1,9 @@
-@tailwind base; @tailwind components; @tailwind utilities;
-body { @apply bg-neutral-50 text-neutral-900 font-sans antialiased; }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-base text-neutral-300 font-sans antialiased; }
+  :focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+}
