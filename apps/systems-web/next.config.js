@@ -16,7 +16,7 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  transpilePackages: ['@innovatix/ui'],
+  transpilePackages: ['@innovatix/ui', '@innovatix/analytics'],
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
@@ -24,6 +24,7 @@ const nextConfig = {
   // configured at the Vercel domain level (defensive redirect domain).
   async redirects() {
     return [
+      { source: '/contact/book', destination: '/book', permanent: true },
       {
         source: '/:path*',
         has: [{ type: 'host', value: 'www.innovatixsystems.com' }],

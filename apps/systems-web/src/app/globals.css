@@ -8,10 +8,31 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* Dark enterprise theme — deep navy base, light slate text. */
   body {
-    @apply bg-white text-neutral-900 font-sans antialiased;
+    @apply bg-base text-neutral-300 font-sans antialiased;
+    overflow-x: hidden; /* guard against decorative-glow / large-type overflow */
   }
-  h1, h2, h3 {
+  h1, h2, h3, h4 {
+    @apply text-white;
     text-wrap: balance;
+  }
+  ::selection {
+    background: rgba(37, 99, 235, 0.35);
+    color: #fff;
+  }
+  /* On-brand focus ring for keyboard users (WCAG). */
+  :focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(90deg, #60a5fa, #2563eb);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }

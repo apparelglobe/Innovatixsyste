@@ -1,25 +1,81 @@
 /**
  * Centralized site configuration — the ONLY place the canonical hostname is
- * resolved. Every canonical, sitemap entry, OG url, schema url, and (later)
- * email/CRM/proposal/portal link must read from here, never hardcode the host.
+ * resolved. Every canonical, sitemap entry, robots reference, OG url, Twitter
+ * metadata, structured-data url, form-confirmation link, and booking link must
+ * read from here, never hardcode the host.
  *
- * Source: SITE_URL env (see .env.example). Validated at import time so a
- * missing/invalid value fails the build loudly rather than shipping a wrong
- * canonical.
+ * Env: NEXT_PUBLIC_SITE_URL (primary). SITE_URL is accepted as a server-only
+ * fallback alias for backward compatibility. NEXT_PUBLIC_ is required because
+ * client components (booking links, analytics) also need the canonical host at
+ * runtime — Next inlines it into the client bundle at build time.
+ *
+ * Production enforcement: in an enforced build (CI / Vercel / explicit
+ * INNOVATIX_ENFORCE_SITE_URL=1) a missing, malformed, non-https, or localhost
+ * value FAILS the build loudly rather than shipping a wrong canonical. Locally
+ * (unenforced) it falls back to http://localhost:3000 so `next dev`/`next start`
+ * keep working. A standalone assertion (scripts/validate-site-url.mjs, run in
+ * prebuild) enforces the same rules with a clearer author-facing message.
  */
+
+/** True when this build must ship a real production canonical (deploy/CI). */
+export function isCanonicalEnforced(): boolean {
+  return (
+    process.env.CI === 'true' ||
+    !!process.env.VERCEL ||
+    process.env.INNOVATIX_ENFORCE_SITE_URL === '1'
+  );
+}
+
+/** True if the hostname is a local / loopback / non-routable dev host. */
+export function isLocalHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return (
+    h === 'localhost' ||
+    h === '::1' ||
+    h === '0.0.0.0' ||
+    h.startsWith('127.') ||
+    h.startsWith('192.168.') ||
+    h.startsWith('10.') ||
+    h.endsWith('.local')
+  );
+}
+
 function resolveSiteUrl(): string {
-  const raw = process.env.SITE_URL?.trim();
-  // Fallback ONLY for local/CI when env is unset; production build must set SITE_URL.
-  const value = raw || 'http://localhost:3000';
+  const raw = (process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL)?.trim();
+  const enforce = isCanonicalEnforced();
+
+  if (!raw) {
+    if (enforce) {
+      throw new Error(
+        '[site] NEXT_PUBLIC_SITE_URL is required for production builds. ' +
+          'Set NEXT_PUBLIC_SITE_URL=https://innovatixsystems.com before building.',
+      );
+    }
+    return 'http://localhost:3000';
+  }
+
   let url: URL;
   try {
-    url = new URL(value);
+    url = new URL(raw);
   } catch {
-    throw new Error(`[site] SITE_URL is not a valid URL: "${value}"`);
+    throw new Error(`[site] NEXT_PUBLIC_SITE_URL is not a valid URL: "${raw}"`);
   }
   if (!/^https?:$/.test(url.protocol)) {
-    throw new Error(`[site] SITE_URL must be http(s): "${value}"`);
+    throw new Error(`[site] NEXT_PUBLIC_SITE_URL must be http(s): "${raw}"`);
   }
+
+  if (enforce) {
+    if (isLocalHost(url.hostname)) {
+      throw new Error(
+        `[site] NEXT_PUBLIC_SITE_URL must not point to localhost in a production build: "${raw}". ` +
+          'No indexable production page may ship a localhost canonical.',
+      );
+    }
+    if (url.protocol !== 'https:') {
+      throw new Error(`[site] NEXT_PUBLIC_SITE_URL must use https in a production build: "${raw}"`);
+    }
+  }
+
   // Normalize: no trailing slash, no path.
   return `${url.protocol}//${url.host}`;
 }

@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { Container } from '@innovatix/ui';
 import { SERVICE_CATEGORIES } from '@/lib/nav';
 import { SITE } from '@/lib/site';
@@ -8,8 +9,8 @@ export function Footer() {
     <footer className="bg-ink text-neutral-300">
       <Container className="grid gap-10 py-16 md:grid-cols-5">
         <div className="md:col-span-2">
-          <div className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-btn bg-primary text-sm font-black text-white">iX</span>
+          <div className="flex items-center gap-2.5">
+            <Image src="/logo-mark-ui.png" alt="" width={40} height={40} className="h-9 w-9 object-contain" />
             <span className="text-lg font-extrabold text-white">Innovatix Systems</span>
           </div>
           <p className="mt-3 max-w-sm text-sm text-neutral-400">{SITE.tagline}</p>
