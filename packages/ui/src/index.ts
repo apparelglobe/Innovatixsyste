@@ -2,6 +2,7 @@ export { cn } from './cn';
 export {
   Container,
   Section,
+  Eyebrow,
   Button,
   Card,
   Badge,

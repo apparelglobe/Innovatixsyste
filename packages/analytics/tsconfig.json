@@ -1,0 +1,5 @@
+{
+  "extends": "@innovatix/config/tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "jsx": "react-jsx" },
+  "include": ["src"]
+}
