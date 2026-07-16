@@ -67,6 +67,18 @@ const schema = z.object({
   // Archives (zip/…) are blocked by default; opt in explicitly per deployment.
   STORAGE_ALLOW_ARCHIVES: bool(false),
 
+  // Malware scanning. 'stub' = EICAR/exe-magic (dev/test); 'clamav' = real
+  // ClamAV over the INSTREAM TCP protocol.
+  MALWARE_SCANNER_PROVIDER: z.enum(['stub', 'clamav']).default('stub'),
+  CLAMAV_HOST: z.string().optional().default(''),
+  CLAMAV_PORT: int(3310),
+  CLAMAV_TIMEOUT_MS: int(30000),
+  CLAMAV_MAX_FILE_BYTES: int(100 * 1024 * 1024),
+  CLAMAV_REQUIRED_IN_PRODUCTION: bool(true),
+  // Files at/below this size scan inline in-request; larger files are enqueued to
+  // the durable scan worker so the API never holds a request open on a big scan.
+  SCAN_INLINE_MAX_BYTES: int(6 * 1024 * 1024),
+
   // Client portal (Launch 2). Client and staff JWTs are signed with SEPARATE
   // secrets so a client token can never be verified as a staff token even if
   // one secret leaks. In production both must be set, strong, and distinct
@@ -116,6 +128,9 @@ const secretProblems = validateProductionSecrets({
   S3_REGION: parsed.data.S3_REGION,
   S3_ACCESS_KEY_ID: parsed.data.S3_ACCESS_KEY_ID,
   S3_SECRET_ACCESS_KEY: parsed.data.S3_SECRET_ACCESS_KEY,
+  MALWARE_SCANNER_PROVIDER: parsed.data.MALWARE_SCANNER_PROVIDER,
+  CLAMAV_HOST: parsed.data.CLAMAV_HOST,
+  CLAMAV_REQUIRED_IN_PRODUCTION: parsed.data.CLAMAV_REQUIRED_IN_PRODUCTION,
   EMAIL_TRANSPORT: parsed.data.EMAIL_TRANSPORT,
   POSTMARK_SERVER_TOKEN: parsed.data.POSTMARK_SERVER_TOKEN,
   PAYMENTS_PROVIDER: parsed.data.PAYMENTS_PROVIDER,

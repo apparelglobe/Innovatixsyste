@@ -4,7 +4,7 @@
  * path traversal.
  */
 import { createReadStream } from 'node:fs';
-import { mkdir, writeFile, unlink, stat } from 'node:fs/promises';
+import { mkdir, writeFile, unlink, stat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import type { FileStorage } from './types';
@@ -32,6 +32,13 @@ export class LocalStorage implements FileStorage {
       return { exists: true, size: s.size };
     } catch {
       return { exists: false };
+    }
+  }
+  async getBytes(key: string): Promise<Buffer | null> {
+    try {
+      return await readFile(safeKeyPath(this.root, key));
+    } catch {
+      return null;
     }
   }
   async getStream(key: string): Promise<Readable> {

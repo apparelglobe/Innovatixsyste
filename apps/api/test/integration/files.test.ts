@@ -125,7 +125,7 @@ test('download gating: unscanned/quarantined/internal-only/cross-org/deleted are
 
 test('provider failure does NOT mark the file available (→ REJECTED, 502)', async () => {
   const failing: FileStorage = {
-    provider: 'local', async put() { throw new Error('provider down'); }, async head() { return { exists: false }; },
+    provider: 'local', async put() { throw new Error('provider down'); }, async head() { return { exists: false }; }, async getBytes() { return null; },
     async getStream() { return null; }, async getSignedUrl() { return null; }, async delete() {},
   };
   __setStorageForTest(failing);
@@ -140,7 +140,7 @@ test('provider failure does NOT mark the file available (→ REJECTED, 502)', as
 
 test('size mismatch after upload is rejected (no silent drift)', async () => {
   const mismatch: FileStorage = {
-    provider: 'local', async put() {}, async head() { return { exists: true, size: 999999 }; },
+    provider: 'local', async put() {}, async head() { return { exists: true, size: 999999 }; }, async getBytes() { return null; },
     async getStream() { return null; }, async getSignedUrl() { return null; }, async delete() {},
   };
   __setStorageForTest(mismatch);

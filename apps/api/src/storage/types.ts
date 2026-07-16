@@ -12,6 +12,8 @@ export interface FileStorage {
   put(key: string, data: Buffer, contentType: string): Promise<void>;
   /** Verify the stored object exists and report its size (drift/size-match check). */
   head(key: string): Promise<{ exists: boolean; size?: number }>;
+  /** Read the full object bytes (used by the async scan worker). null if missing. */
+  getBytes(key: string): Promise<Buffer | null>;
   /** Local: a readable stream of the bytes. S3: null (use signedUrl instead). */
   getStream(key: string): Promise<Readable | null>;
   /** S3: a short-lived signed URL. Local: null. */

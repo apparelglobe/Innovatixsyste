@@ -37,7 +37,7 @@ export class S3CompatibleStorage implements FileStorage {
     return { protocol: 'https', host: `${bucket}.s3.${region}.amazonaws.com`, canonicalUri: `/${encodedKey}` };
   }
 
-  private request(t: Target, method: 'PUT' | 'HEAD' | 'DELETE', headers: Record<string, string>, body?: Buffer): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+  private request(t: Target, method: 'PUT' | 'HEAD' | 'DELETE' | 'GET', headers: Record<string, string>, body?: Buffer): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
     const mod = t.protocol === 'http' ? http : https;
     return new Promise((resolve, reject) => {
       const req = mod.request(
@@ -74,6 +74,15 @@ export class S3CompatibleStorage implements FileStorage {
     if (res.status >= 300) throw new Error(`s3_head_failed:${res.status}`);
     const len = res.headers['content-length'];
     return { exists: true, size: len ? Number(len) : undefined };
+  }
+
+  async getBytes(key: string): Promise<Buffer | null> {
+    const t = this.resolve(key);
+    const signed = signRequest({ ...this.creds(), method: 'GET', host: t.host, canonicalUri: t.canonicalUri, payloadHash: EMPTY_SHA256 });
+    const res = await this.request(t, 'GET', signed);
+    if (res.status === 404) return null;
+    if (res.status >= 300) throw new Error(`s3_get_failed:${res.status}`);
+    return res.body;
   }
 
   async getStream(): Promise<Readable | null> {

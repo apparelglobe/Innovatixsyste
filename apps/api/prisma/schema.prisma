@@ -507,6 +507,8 @@ model ProjectFile {
   // Full upload/scan lifecycle. A file is downloadable ONLY in AVAILABLE.
   state      FileState    @default(AVAILABLE)
   scanStatus String       @default("clean") // legacy: 'clean' | 'infected' | 'pending'
+  fileHash   String?      // SHA-256 of the object (audit evidence + dedup later)
+  scans      FileScan[]
   uploadedByStaffId String?
   clientVisible Boolean    @default(true)
   deletedAt  DateTime?
@@ -780,6 +782,55 @@ enum FileState {
   QUARANTINED    // scan flagged malware — never downloadable
   REJECTED       // failed validation / storage verification
   DELETED        // soft-deleted
+}
+
+enum ScanResult {
+  CLEAN
+  INFECTED
+  ERROR
+  TIMEOUT
+  UNSUPPORTED
+  SKIPPED
+}
+
+// A malware-scan attempt for a file — durable job + result/evidence in one row.
+// The worker (or an inline call for small/dev files) drives it; a file becomes
+// AVAILABLE only when a scan records CLEAN. Retryable with backoff; DEAD after
+// maxAttempts leaves the file unavailable (never silently available).
+model FileScan {
+  id             String      @id @default(cuid())
+  tenantId       String
+  fileId         String
+  file           ProjectFile @relation(fields: [fileId], references: [id])
+
+  // Durable-job lifecycle (JobStatus reused: PENDING/PROCESSING/SUCCEEDED/FAILED/DEAD)
+  status         JobStatus   @default(PENDING)
+  idempotencyKey String      @unique
+  attempts       Int         @default(0)
+  maxAttempts    Int         @default(5)
+  nextAttemptAt  DateTime    @default(now())
+  lastError      String?
+  errorCode      String?
+  retryCount     Int         @default(0)
+
+  // Scan evidence (staff-only; never surfaced to clients)
+  provider         String?
+  engine           String?
+  engineVersion    String?
+  signatureVersion String?
+  result           ScanResult?
+  threatName       String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  fileHash         String?
+  fileSizeBytes    Int?
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([fileId])
+  @@map("file_scans")
 }
 
 enum InvoiceStatus {

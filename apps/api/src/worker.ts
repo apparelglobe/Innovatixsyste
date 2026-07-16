@@ -5,6 +5,7 @@
  */
 import { prisma, assertDbReachable } from './db';
 import { processDueJobs } from './jobs/processor';
+import { processScanJobs } from './scanning/service';
 import { purgeExpiredRateLimits } from './lib/ratelimit';
 import { config } from './config';
 
@@ -21,6 +22,11 @@ async function loop() {
       if (summary.processed > 0) {
         // eslint-disable-next-line no-console
         console.log(`[worker] ${JSON.stringify(summary)}`);
+      }
+      const scans = await processScanJobs(prisma, new Date());
+      if (scans.processed > 0) {
+        // eslint-disable-next-line no-console
+        console.log(`[worker] scans ${JSON.stringify(scans)}`);
       }
       // opportunistic retention purge every ~5 min
       if (++ticks % 150 === 0) await purgeExpiredRateLimits(prisma);

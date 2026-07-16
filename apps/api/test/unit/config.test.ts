@@ -37,6 +37,9 @@ const validProd = (over: Partial<ProdSecretEnv> = {}): ProdSecretEnv => ({
   POSTMARK_SERVER_TOKEN: '',
   PAYMENTS_PROVIDER: 'stub',
   STRIPE_SECRET_KEY: '',
+  MALWARE_SCANNER_PROVIDER: 'clamav',
+  CLAMAV_HOST: 'clamav.internal',
+  CLAMAV_REQUIRED_IN_PRODUCTION: true,
   ENCRYPTION_KEYS: {},
   ...over,
 });
@@ -106,6 +109,17 @@ test('postmark transport requires a token', () => {
     validateProductionSecrets(validProd({ EMAIL_TRANSPORT: 'postmark', POSTMARK_SERVER_TOKEN: 'pm-token-123' })),
     [],
   );
+});
+
+test('production requires a real malware scanner unless explicitly waived', () => {
+  assert.ok(
+    validateProductionSecrets(validProd({ MALWARE_SCANNER_PROVIDER: 'stub' })).some((e) => /MALWARE_SCANNER_PROVIDER must be "clamav"/.test(e)),
+  );
+  assert.ok(
+    validateProductionSecrets(validProd({ MALWARE_SCANNER_PROVIDER: 'clamav', CLAMAV_HOST: '' })).some((e) => /CLAMAV_HOST is required/.test(e)),
+  );
+  // Explicit waiver allows the stub in production.
+  assert.deepEqual(validateProductionSecrets(validProd({ MALWARE_SCANNER_PROVIDER: 'stub', CLAMAV_REQUIRED_IN_PRODUCTION: false })), []);
 });
 
 test('s3 storage requires bucket + region + access key + secret', () => {

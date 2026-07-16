@@ -41,6 +41,9 @@ export interface ProdSecretEnv {
   S3_REGION: string;
   S3_ACCESS_KEY_ID?: string;
   S3_SECRET_ACCESS_KEY?: string;
+  MALWARE_SCANNER_PROVIDER?: string;
+  CLAMAV_HOST?: string;
+  CLAMAV_REQUIRED_IN_PRODUCTION?: boolean;
   EMAIL_TRANSPORT: string;
   POSTMARK_SERVER_TOKEN: string;
   PAYMENTS_PROVIDER: string;
@@ -95,6 +98,15 @@ export function validateProductionSecrets(env: ProdSecretEnv): string[] {
     if ((env.S3_REGION ?? '').trim() === '') errors.push('S3_REGION is required when STORAGE_PROVIDER=s3.');
     if ((env.S3_ACCESS_KEY_ID ?? '').trim() === '') errors.push('S3_ACCESS_KEY_ID is required when STORAGE_PROVIDER=s3.');
     if ((env.S3_SECRET_ACCESS_KEY ?? '').trim() === '') errors.push('S3_SECRET_ACCESS_KEY is required when STORAGE_PROVIDER=s3.');
+  }
+  // A real malware scanner must be configured in production (unless explicitly
+  // waived). Fail fast rather than accept files that never get truly scanned.
+  if (env.CLAMAV_REQUIRED_IN_PRODUCTION !== false) {
+    if ((env.MALWARE_SCANNER_PROVIDER ?? 'stub') !== 'clamav') {
+      errors.push('MALWARE_SCANNER_PROVIDER must be "clamav" in production (or set CLAMAV_REQUIRED_IN_PRODUCTION=false to waive).');
+    } else if ((env.CLAMAV_HOST ?? '').trim() === '') {
+      errors.push('CLAMAV_HOST is required when MALWARE_SCANNER_PROVIDER=clamav.');
+    }
   }
   if (env.PAYMENTS_PROVIDER === 'stripe') {
     if ((env.STRIPE_SECRET_KEY ?? '').trim() === '') {

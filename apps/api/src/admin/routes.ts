@@ -25,7 +25,7 @@ import { payments, renderInvoicePdfFrom } from '../billing';
 import { inviteClientUser } from './client-users';
 import { issueInvitation, resendInvitation, revokeInvitation } from '../invitations/service';
 import { invitationStatus } from '../lib/invitations';
-import { scanFile } from '../storage/types';
+import { scanUploadedFile } from '../scanning/service';
 
 type StaffCtx = { session: NonNullable<ReturnType<typeof verifyStaff>>; tenantId: string };
 
@@ -497,28 +497,18 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(502).send({ ok: false, message: 'upload_failed' });
     }
 
-    // 3) UPLOADED → SCANNING → scan. QUARANTINED files are deleted + never available.
+    // 3) SCANNING → hand off to the malware-scan service. Small files (and the
+    //    stub scanner) finalize inline; larger files enqueue a durable scan job
+    //    and stay SCANNING until the worker records a CLEAN result. On CLEAN the
+    //    service flips the version current + notifies the client; on INFECTED it
+    //    quarantines + security-audits + alerts staff.
     await prisma.projectFile.update({ where: { id: file.id }, data: { storageKey: key, state: 'SCANNING' } });
-    const scan = await scanFile(buffer, mp.mimetype);
-    if (!scan.clean) {
-      await prisma.projectFile.update({ where: { id: file.id }, data: { state: 'QUARANTINED', scanStatus: 'infected' } });
-      await storage().delete(key).catch(() => undefined);
-      await audit(ctx.tenantId, ctx.session.sub, 'ProjectFile', file.id, 'FILE_QUARANTINED', { reason: scan.reason });
-      return reply.code(400).send({ ok: false, message: 'file_rejected', reason: scan.reason });
-    }
+    const scanned = await scanUploadedFile(prisma, file, buffer);
+    if (scanned.result === 'INFECTED') return reply.code(400).send({ ok: false, message: 'file_rejected', reason: 'malware_detected' });
 
-    // 4) AVAILABLE — becomes the current version; only now is it client-visible.
-    await prisma.$transaction([
-      prisma.projectFile.update({ where: { id: file.id }, data: { state: 'AVAILABLE', scanStatus: 'clean', isCurrent: true, ...(rootId ? {} : { rootId: file.id }) } }),
-      ...(previous ? [prisma.projectFile.update({ where: { id: previous.id }, data: { isCurrent: false } })] : []),
-    ]);
-
-    await audit(ctx.tenantId, ctx.session.sub, 'ProjectFile', file.id, previous ? 'FILE_VERSIONED' : 'FILE_UPLOADED', { clientVisible, category, version });
-    if (clientVisible) {
-      await activity(ctx.tenantId, p.id, 'FILE', previous ? `File updated: ${file.name} (v${version})` : `File uploaded: ${file.name}`);
-      await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'FILE_UPLOADED', title: previous ? `Updated file: ${file.name} (v${version})` : `New file: ${file.name}`, projectId: p.id, linkPath: '/files', email: true });
-    }
-    return reply.send({ ok: true, file: { id: file.id, version, state: 'AVAILABLE' } });
+    // AVAILABLE (inline-clean) → 200; SCANNING (queued) / REJECTED (unscannable) → 202.
+    const code = scanned.state === 'AVAILABLE' ? 200 : 202;
+    return reply.code(code).send({ ok: true, file: { id: file.id, version, state: scanned.state } });
   });
 
   // ── Version history for a file (staff) ──
@@ -533,6 +523,26 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true, name: true, version: true, isCurrent: true, state: true, sizeBytes: true, clientVisible: true, uploadedAt: true, deletedAt: true },
     });
     return reply.send({ ok: true, versions });
+  });
+
+  // Staff-only scan status/evidence for a file (threat name, engine, retries,
+  // errors). Never exposed to clients — clients only ever see AVAILABLE files.
+  app.get('/admin/files/:id/scan', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'project:view'); if (!ctx) return;
+    const file = await prisma.projectFile.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId }, select: { id: true, state: true, fileHash: true } });
+    if (!file) return reply.code(404).send({ ok: false });
+    const scan = await prisma.fileScan.findFirst({ where: { tenantId: ctx.tenantId, fileId: file.id }, orderBy: { createdAt: 'desc' } });
+    return reply.send({
+      ok: true,
+      fileState: file.state,
+      fileHash: file.fileHash,
+      scan: scan && {
+        status: scan.status, result: scan.result, threatName: scan.threatName,
+        provider: scan.provider, engine: scan.engine, engineVersion: scan.engineVersion, signatureVersion: scan.signatureVersion,
+        attempts: scan.attempts, maxAttempts: scan.maxAttempts, retryCount: scan.retryCount, errorCode: scan.errorCode, lastError: scan.lastError,
+        startedAt: scan.startedAt, completedAt: scan.completedAt, fileSizeBytes: scan.fileSizeBytes,
+      },
+    });
   });
 
   // Staff download — any non-deleted version, but only if scan-clean (AVAILABLE).
