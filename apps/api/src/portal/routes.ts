@@ -23,6 +23,8 @@ import { storage } from '../storage';
 import { notifyStaff } from '../notifications/service';
 import { requireClientPermission } from '../client/authz';
 import { inviteClientUser } from '../admin/client-users';
+import { checkoutGateway } from '../billing/gateway';
+import { randomUUID } from 'node:crypto';
 
 type Ctx = { session: NonNullable<ReturnType<typeof verifySession>> };
 
@@ -254,7 +256,64 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     });
     if (!inv) return reply.code(404).send({ ok: false });
     const result = await markInvoicePaid(prisma, inv.id, 'demo-pay');
+    // Keep the Payment record coherent in the stub loop (mirrors the webhook path).
+    await prisma.payment.updateMany({ where: { invoiceId: inv.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } });
     return reply.send({ ok: true, result });
+  });
+
+  // ── Create a payment checkout session (OWNER only) — provider-agnostic. ──
+  //    Amount + currency come from the server-side invoice; NOTHING authoritative
+  //    is taken from the request body. The webhook (not the redirect) settles it.
+  app.post('/portal/invoices/:id/checkout', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay'))) return;
+
+    // Confirm the invoice belongs to the authenticated org.
+    const inv = await prisma.invoice.findFirst({
+      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org } },
+    });
+    if (!inv) return reply.code(404).send({ ok: false });
+    // Confirm it is payable and not already paid.
+    if (inv.status === 'PAID') return reply.code(409).send({ ok: false, message: 'This invoice is already paid.' });
+    if (inv.status === 'DRAFT') return reply.code(409).send({ ok: false, message: 'This invoice is not payable yet.' });
+    if (inv.amountCents <= 0) return reply.code(409).send({ ok: false, message: 'This invoice has no payable amount.' });
+
+    // Billing-contact email → else the acting owner's email.
+    let customerEmail: string | null = ctx.session.email ?? null;
+    if (inv.billingContactUserId) {
+      const bc = await prisma.clientUser.findFirst({ where: { id: inv.billingContactUserId, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { email: true } });
+      if (bc?.email) customerEmail = bc.email;
+    }
+
+    const gateway = checkoutGateway();
+    const idempotencyKey = `checkout_${inv.id}_${randomUUID().slice(0, 12)}`;
+    let session;
+    try {
+      session = await gateway.createCheckoutSession({
+        invoiceId: inv.id, tenantId: inv.tenantId, number: inv.number,
+        amountCents: inv.amountCents, currency: inv.currency,
+        portalOrigin: config.PORTAL_WEB_ORIGIN[0] || 'http://localhost:3001',
+        customerEmail, idempotencyKey,
+      });
+    } catch (err) {
+      req.log.error({ err: err instanceof Error ? err.message : String(err), invoiceId: inv.id }, 'checkout session creation failed');
+      return reply.code(502).send({ ok: false, message: 'Could not start payment. Please try again.' });
+    }
+
+    // Record the checkout attempt (amount copied from the invoice, server-side).
+    await prisma.payment.create({
+      data: {
+        tenantId: inv.tenantId, clientOrgId: ctx.session.org, invoiceId: inv.id,
+        provider: gateway.name, amountCents: inv.amountCents, currency: inv.currency,
+        status: 'PENDING', checkoutSessionId: session.sessionId, providerCustomerId: session.providerCustomerId ?? null,
+      },
+    });
+    await prisma.auditEvent.create({
+      data: { tenantId: inv.tenantId, entityType: 'Invoice', entityId: inv.id, action: 'PAYMENT_CHECKOUT_CREATED', actorType: 'ADMIN', actorId: ctx.session.sub, data: { provider: gateway.name, sessionId: session.sessionId } },
+    }).catch(() => undefined);
+
+    return reply.send({ ok: true, url: session.url, provider: gateway.name });
   });
 
   // ── Read receipts (client marks the team's messages as read) ──

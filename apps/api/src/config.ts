@@ -80,6 +80,10 @@ const schema = z.object({
   PAYMENTS_PROVIDER: z.enum(['stub', 'stripe']).default('stub'),
   PAYMENTS_WEBHOOK_SECRET: z.string().default('dev-payments-webhook-secret'),
   STRIPE_SECRET_KEY: z.string().optional().default(''),
+  // Stripe webhook signing secret (whsec_…). Dev/test default is a local-only,
+  // non-secret placeholder so tests can sign+verify fixtures; production boot
+  // requires a real value when PAYMENTS_PROVIDER=stripe (see config-validation).
+  STRIPE_WEBHOOK_SECRET: z.string().default('whsec_dev_local_only'),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -105,6 +109,7 @@ const secretProblems = validateProductionSecrets({
   POSTMARK_SERVER_TOKEN: parsed.data.POSTMARK_SERVER_TOKEN,
   PAYMENTS_PROVIDER: parsed.data.PAYMENTS_PROVIDER,
   STRIPE_SECRET_KEY: parsed.data.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: parsed.data.STRIPE_WEBHOOK_SECRET,
   ENCRYPTION_KEYS: {},
 });
 if (secretProblems.length > 0) {

@@ -118,12 +118,17 @@ test('s3 storage requires bucket + region', () => {
   );
 });
 
-test('stripe payments require a secret key', () => {
+test('stripe payments require a secret key and a webhook secret', () => {
+  const errs = validateProductionSecrets(validProd({ PAYMENTS_PROVIDER: 'stripe' }));
+  assert.ok(errs.some((e) => /STRIPE_SECRET_KEY/.test(e)));
+  assert.ok(errs.some((e) => /STRIPE_WEBHOOK_SECRET/.test(e)));
+  // Secret key alone is not enough — the webhook secret is still required.
   assert.ok(
-    validateProductionSecrets(validProd({ PAYMENTS_PROVIDER: 'stripe' })).some((e) => /STRIPE_SECRET_KEY/.test(e)),
+    validateProductionSecrets(validProd({ PAYMENTS_PROVIDER: 'stripe', STRIPE_SECRET_KEY: strong('stripe') })).some((e) => /STRIPE_WEBHOOK_SECRET/.test(e)),
   );
+  // Both present → clean.
   assert.deepEqual(
-    validateProductionSecrets(validProd({ PAYMENTS_PROVIDER: 'stripe', STRIPE_SECRET_KEY: strong('stripe') })),
+    validateProductionSecrets(validProd({ PAYMENTS_PROVIDER: 'stripe', STRIPE_SECRET_KEY: strong('stripe'), STRIPE_WEBHOOK_SECRET: strong('whsec') })),
     [],
   );
 });

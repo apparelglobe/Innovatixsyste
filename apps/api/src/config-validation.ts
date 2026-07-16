@@ -43,6 +43,7 @@ export interface ProdSecretEnv {
   POSTMARK_SERVER_TOKEN: string;
   PAYMENTS_PROVIDER: string;
   STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
   /** Extensible hook: symmetric-encryption keys keyed by env-var name. None used today. */
   ENCRYPTION_KEYS?: Record<string, string | undefined>;
 }
@@ -91,8 +92,13 @@ export function validateProductionSecrets(env: ProdSecretEnv): string[] {
     if ((env.S3_BUCKET ?? '').trim() === '') errors.push('S3_BUCKET is required when STORAGE_PROVIDER=s3.');
     if ((env.S3_REGION ?? '').trim() === '') errors.push('S3_REGION is required when STORAGE_PROVIDER=s3.');
   }
-  if (env.PAYMENTS_PROVIDER === 'stripe' && (env.STRIPE_SECRET_KEY ?? '').trim() === '') {
-    errors.push('STRIPE_SECRET_KEY is required when PAYMENTS_PROVIDER=stripe.');
+  if (env.PAYMENTS_PROVIDER === 'stripe') {
+    if ((env.STRIPE_SECRET_KEY ?? '').trim() === '') {
+      errors.push('STRIPE_SECRET_KEY is required when PAYMENTS_PROVIDER=stripe.');
+    }
+    if ((env.STRIPE_WEBHOOK_SECRET ?? '').trim() === '') {
+      errors.push('STRIPE_WEBHOOK_SECRET is required when PAYMENTS_PROVIDER=stripe.');
+    }
   }
 
   // Encryption keys — none used today. When symmetric encryption is added,

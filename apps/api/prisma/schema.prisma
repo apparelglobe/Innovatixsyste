@@ -533,6 +533,7 @@ model Invoice {
   createdAt  DateTime      @default(now())
 
   lineItems  InvoiceLineItem[]
+  payments   Payment[]
 
   @@index([projectId, status])
   @@map("invoices")
@@ -552,6 +553,62 @@ model InvoiceLineItem {
 
   @@index([invoiceId])
   @@map("invoice_line_items")
+}
+
+// A single payment attempt/record for an invoice through a payment provider.
+// Tenant- and org-scoped. Created PENDING when a checkout session is opened; the
+// provider WEBHOOK (authoritative — never the success redirect) transitions it to
+// PAID/FAILED/CANCELED. All provider identifiers are stored for reconciliation.
+model Payment {
+  id                 String        @id @default(cuid())
+  tenantId           String
+  clientOrgId        String
+  invoiceId          String
+  invoice            Invoice       @relation(fields: [invoiceId], references: [id])
+
+  provider           String // 'stub' | 'stripe'
+  providerCustomerId String?
+  checkoutSessionId  String?
+  paymentIntentId    String?
+  providerEventId    String? // the webhook event that last transitioned this payment
+
+  amountCents        Int // authoritative amount, copied from the invoice server-side
+  currency           String
+  status             PaymentStatus @default(PENDING)
+  paidAt             DateTime?
+  failureReason      String?
+  refundStatus       String?
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([tenantId, clientOrgId])
+  @@index([invoiceId])
+  @@index([checkoutSessionId])
+  @@index([paymentIntentId])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+// Idempotency / replay ledger for provider webhook events. A UNIQUE (provider,
+// providerEventId) means a duplicate delivery is a fast no-op — the invoice can
+// never be transitioned twice by the same event.
+model ProcessedWebhookEvent {
+  id              String   @id @default(cuid())
+  provider        String
+  providerEventId String
+  type            String
+  createdAt       DateTime @default(now())
+
+  @@unique([provider, providerEventId])
+  @@map("processed_webhook_events")
 }
 
 model PortalMessage {
