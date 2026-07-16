@@ -1,0 +1,789 @@
+// Innovatix lead-pipeline schema.
+//
+// Design rules (Step 3 spec):
+//  • Multi-tenant-ready: every business record carries tenantId; compound indexes
+//    lead with tenantId; schema can adopt PostgreSQL RLS later without redesign.
+//  • Dedup identity = (tenantId, normalizedEmail) UNIQUE. Repeated submissions are
+//    preserved as separate LeadInquiry rows — never discarded, never silently merged.
+//  • Durable side effects: Lead/Inquiry/Attribution/Audit + pending SideEffectJob
+//    all commit in ONE transaction; a worker drains jobs with retry/backoff/DLQ.
+//  • Privacy: no raw IP stored — only a salted hash with an expiry. Sensitive fields
+//    are never logged.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Tenancy ──────────────────────────────────────────────────────────────────
+model Tenant {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads         Lead[]
+  inquiries     LeadInquiry[]
+  attributions  LeadAttribution[]
+  activities    LeadActivity[]
+  auditEvents   AuditEvent[]
+  jobs          SideEffectJob[]
+  emails        EmailOutbox[]
+  assignments   Assignment[]
+  slaTimers     SlaTimer[]
+  meetings      Meeting[]
+  rateLimits    RateLimitCounter[]
+
+  @@map("tenants")
+}
+
+// ── Lead: the person/company sales record (one per tenant+email) ─────────────
+model Lead {
+  id              String     @id @default(cuid())
+  tenantId        String
+  tenant          Tenant     @relation(fields: [tenantId], references: [id])
+
+  email           String     // original, as submitted
+  normalizedEmail String     // lowercased + trimmed — dedup identity
+  firstName       String?
+  lastName        String?
+  company         String?    // original value preserved
+  companyNormalized String?  // normalized for comparison only
+  phone           String?
+  jobTitle        String?
+
+  status          LeadStatus @default(NEW)
+
+  firstTouchAttributionId String? @unique
+  firstTouchAttribution   LeadAttribution? @relation("FirstTouch", fields: [firstTouchAttributionId], references: [id])
+  lastTouchAttributionId  String? @unique
+  lastTouchAttribution    LeadAttribution? @relation("LastTouch", fields: [lastTouchAttributionId], references: [id])
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  inquiries   LeadInquiry[]
+  activities  LeadActivity[]
+  jobs        SideEffectJob[]
+  emails      EmailOutbox[]
+  assignment  Assignment?
+  slaTimers   SlaTimer[]
+  meetings    Meeting[]
+
+  @@unique([tenantId, normalizedEmail]) // concurrency-safe dedup identity
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, companyNormalized])
+  @@map("leads")
+}
+
+// ── LeadInquiry: every submission preserved (history), even when merged ──────
+model LeadInquiry {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id])
+
+  form            InquiryForm
+  serviceInterest String?
+  projectDescription String?
+  budgetRange     String?
+  desiredStartWindow String?
+  landingPage     String?
+
+  consentStatus   ConsentStatus @default(NOT_REQUIRED)
+  consentAt       DateTime?
+  consentPolicyVersion String?
+
+  spamResult      SpamResult @default(CLEAN)
+  spamScore       Int        @default(0)
+  spamReasons     String[]   @default([])
+
+  // sanitized snapshot of the submitted fields (never the raw IP/UA)
+  sanitizedPayload Json
+
+  idempotencyKey  String
+
+  attribution     LeadAttribution? @relation("InquiryAttribution")
+
+  submittedAt     DateTime @default(now())
+
+  @@unique([tenantId, idempotencyKey]) // double-click / retry protection
+  @@index([tenantId, leadId])
+  @@index([tenantId, submittedAt])
+  @@map("lead_inquiries")
+}
+
+// ── LeadAttribution: first/last touch + UTM + GCLID snapshot ─────────────────
+model LeadAttribution {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  inquiryId     String?  @unique
+  inquiry       LeadInquiry? @relation("InquiryAttribution", fields: [inquiryId], references: [id])
+
+  landingPage   String?
+  referrerUrl   String?
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmTerm       String?
+  utmContent    String?
+  gclid         String?
+  userAgent     String?   // stored on attribution row (not in logs)
+
+  createdAt     DateTime @default(now())
+
+  firstTouchOf  Lead?    @relation("FirstTouch")
+  lastTouchOf   Lead?    @relation("LastTouch")
+
+  @@index([tenantId, createdAt])
+  @@map("lead_attributions")
+}
+
+// ── LeadActivity: timeline (status change, assignment, meeting, email) ───────
+model LeadActivity {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id])
+
+  type      ActivityType
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, leadId])
+  @@index([tenantId, createdAt])
+  @@map("lead_activities")
+}
+
+// ── AuditEvent: append-only audit trail ──────────────────────────────────────
+model AuditEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  entityType    String
+  entityId      String
+  action        String
+  actorType     ActorType @default(SYSTEM)
+  actorId       String?
+  data          Json?
+  correlationId String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+  @@index([correlationId])
+  @@map("audit_events")
+}
+
+// ── SideEffectJob: durable outbox (retry/backoff/DLQ/idempotency) ────────────
+model SideEffectJob {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  leadId        String?
+  lead          Lead?     @relation(fields: [leadId], references: [id])
+  inquiryId     String?
+
+  type          JobType
+  status        JobStatus @default(PENDING)
+  payload       Json
+  idempotencyKey String   @unique
+
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(6)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, leadId])
+  @@map("side_effect_jobs")
+}
+
+// ── EmailOutbox: dev outbox + record of every transactional email ────────────
+model EmailOutbox {
+  id            String      @id @default(cuid())
+  tenantId      String
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  leadId        String?
+  lead          Lead?       @relation(fields: [leadId], references: [id])
+  inquiryId     String?
+
+  type          EmailType
+  transport     String      // 'outbox' | 'postmark'
+  toAddress     String
+  fromAddress   String
+  subject       String
+  htmlBody      String
+  textBody      String
+  status        EmailStatus @default(QUEUED)
+  providerMessageId String?
+  error         String?
+
+  createdAt     DateTime    @default(now())
+  sentAt        DateTime?
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, type])
+  @@map("email_outbox")
+}
+
+// ── Assignment: routing to the sales queue ───────────────────────────────────
+model Assignment {
+  id         String           @id @default(cuid())
+  tenantId   String
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  leadId     String           @unique
+  lead       Lead             @relation(fields: [leadId], references: [id])
+
+  queue      String           @default("innovatix-systems-sales")
+  assigneeId String?
+  status     AssignmentStatus @default(UNASSIGNED)
+  assignedAt DateTime?
+
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([tenantId, status])
+  @@map("assignments")
+}
+
+// ── SlaTimer: business-hours-aware first-response timer ──────────────────────
+model SlaTimer {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  leadId       String
+  lead         Lead      @relation(fields: [leadId], references: [id])
+
+  targetMinutes Int
+  startedAt    DateTime  @default(now())
+  dueAt        DateTime
+  satisfiedAt  DateTime?
+  status       SlaStatus @default(ACTIVE)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, dueAt])
+  @@index([tenantId, status])
+  @@map("sla_timers")
+}
+
+// ── Meeting: Cal.com booking linked to a lead ────────────────────────────────
+model Meeting {
+  id               String        @id @default(cuid())
+  tenantId         String
+  tenant           Tenant        @relation(fields: [tenantId], references: [id])
+  leadId           String
+  lead             Lead          @relation(fields: [leadId], references: [id])
+
+  provider         String        @default("calcom")
+  providerBookingId String
+  status           MeetingStatus @default(SCHEDULED)
+  scheduledAt      DateTime?
+  endsAt           DateTime?
+  attendeeEmail    String?
+  meetingUrl       String?
+  rawPayload       Json?
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([provider, providerBookingId])
+  @@index([tenantId, leadId])
+  @@map("meetings")
+}
+
+// ── RateLimitCounter: DB-backed, hashed-identifier sliding window ────────────
+model RateLimitCounter {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  hashedId   String   // salted hash of the abuse identifier — never the raw IP
+  windowStart DateTime
+  count      Int      @default(0)
+  expiresAt  DateTime // retention: rows past this are purgeable
+
+  @@unique([tenantId, hashedId, windowStart])
+  @@index([expiresAt])
+  @@map("rate_limit_counters")
+}
+
+// ── Client Portal (Launch 2) ─────────────────────────────────────────────────
+// Portal models carry a scalar tenantId (indexed) for tenant-scoping without
+// adding back-relations to Tenant; tenant integrity is enforced in the app and
+// through the ClientOrg relation. Within-portal relations use real FKs.
+
+model ClientOrg {
+  id        String   @id @default(cuid())
+  tenantId  String
+  leadId    String?  // origin lead, when converted from the pipeline
+  name      String
+  slug      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    ClientUser[]
+  projects Project[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("client_orgs")
+}
+
+model ClientUser {
+  id           String         @id @default(cuid())
+  tenantId     String
+  clientOrgId  String
+  clientOrg    ClientOrg      @relation(fields: [clientOrgId], references: [id])
+  email        String
+  normalizedEmail String
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  role         ClientUserRole @default(MEMBER)
+  lastLoginAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([tenantId, normalizedEmail])
+  @@index([clientOrgId])
+  @@map("client_users")
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  tenantId        String
+  clientOrgId     String
+  clientOrg       ClientOrg     @relation(fields: [clientOrgId], references: [id])
+  leadId          String?
+  name            String
+  code            String?
+  status          ProjectStatus @default(DISCOVERY)
+  percentComplete Int           @default(0)
+  startDate       DateTime?
+  dueDate         DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  milestones Milestone[]
+  reports    ProjectReport[]
+  approvals  Approval[]
+  files      ProjectFile[]
+  invoices   Invoice[]
+  messages   PortalMessage[]
+  members    ProjectMember[]
+  activities PortalActivity[]
+
+  @@index([tenantId, clientOrgId])
+  @@index([tenantId, status])
+  @@map("projects")
+}
+
+model Milestone {
+  id          String          @id @default(cuid())
+  tenantId    String
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id])
+  name        String
+  sequence    Int             @default(0)
+  status      MilestoneStatus @default(PLANNED)
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+
+  approvals Approval[]
+
+  @@index([projectId, sequence])
+  @@map("milestones")
+}
+
+model ProjectReport {
+  id          String     @id @default(cuid())
+  tenantId    String
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id])
+  kind        ReportKind @default(WEEKLY)
+  title       String
+  summary     String
+  periodStart DateTime?
+  periodEnd   DateTime?
+  publishedAt DateTime   @default(now())
+  createdAt   DateTime   @default(now())
+
+  @@index([projectId, publishedAt])
+  @@map("project_reports")
+}
+
+model Approval {
+  id           String         @id @default(cuid())
+  tenantId     String
+  projectId    String
+  project      Project        @relation(fields: [projectId], references: [id])
+  milestoneId  String?
+  milestone    Milestone?     @relation(fields: [milestoneId], references: [id])
+  type         ApprovalType   @default(MILESTONE)
+  subject      String
+  status       ApprovalStatus @default(PENDING)
+  requestedByStaffId String?
+  relatedType  String?        // 'Milestone' | 'ProjectFile' | 'Project' …
+  relatedId    String?
+  decidedByUserId String?
+  decidedAt    DateTime?
+  note         String?
+  createdAt    DateTime       @default(now())
+
+  @@index([projectId, status])
+  @@map("approvals")
+}
+
+model ProjectFile {
+  id         String       @id @default(cuid())
+  tenantId   String
+  projectId  String
+  project    Project      @relation(fields: [projectId], references: [id])
+  name       String
+  category   FileCategory @default(DELIVERABLE)
+  sizeBytes  Int?
+  mimeType   String?
+  storageProvider String?  // 'local' | 's3'
+  storageKey String?       // object-storage key
+  version    Int          @default(1)
+  rootId     String?      // first version's id (self for v1) — groups a version chain
+  isCurrent  Boolean      @default(true) // only the latest non-deleted version is current
+  scanStatus String       @default("clean") // 'clean' | 'infected' | 'pending'
+  uploadedByStaffId String?
+  clientVisible Boolean    @default(true)
+  deletedAt  DateTime?
+  uploadedAt DateTime     @default(now())
+
+  @@index([projectId, category])
+  @@index([rootId])
+  @@map("project_files")
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  tenantId   String
+  projectId  String
+  project    Project       @relation(fields: [projectId], references: [id])
+  number     String
+  amountCents Int
+  currency   String        @default("USD")
+  status     InvoiceStatus @default(SENT)
+  billingContactUserId String?
+  paymentUrl String?
+  pdfKey     String?
+  issuedAt   DateTime?
+  dueAt      DateTime?
+  paidAt     DateTime?
+  createdAt  DateTime      @default(now())
+
+  lineItems  InvoiceLineItem[]
+
+  @@index([projectId, status])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(cuid())
+  tenantId    String
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  description String
+  quantity    Int      @default(1)
+  unitCents   Int
+  amountCents Int
+  milestoneId String?
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+model PortalMessage {
+  id           String            @id @default(cuid())
+  tenantId     String
+  projectId    String
+  project      Project           @relation(fields: [projectId], references: [id])
+  authorType   MessageAuthorType
+  authorUserId String?
+  authorStaffId String?
+  internal     Boolean           @default(false) // internal-only note, hidden from the client
+  body         String
+  readByClientAt DateTime?
+  readByTeamAt DateTime?
+  createdAt    DateTime          @default(now())
+
+  @@index([projectId, createdAt])
+  @@map("portal_messages")
+}
+
+model ProjectMember {
+  id            String   @id @default(cuid())
+  tenantId      String
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  staffUserId   String?  // links to the assigned StaffUser (null = display-only)
+  name          String
+  role          String
+  clientVisible Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@index([projectId])
+  @@map("project_members")
+}
+
+// Client-facing project activity feed (report generated, milestone approved, file uploaded…).
+model PortalActivity {
+  id        String   @id @default(cuid())
+  tenantId  String
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  type      String
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@map("portal_activities")
+}
+
+// ── Delivery side (staff) ────────────────────────────────────────────────────
+model StaffUser {
+  id           String    @id @default(cuid())
+  tenantId     String
+  email        String
+  normalizedEmail String
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  role         StaffRole @default(ENGINEER)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, normalizedEmail])
+  @@index([tenantId, role])
+  @@map("staff_users")
+}
+
+// In-app notification (also mirrored to email via the outbox where relevant).
+model Notification {
+  id           String           @id @default(cuid())
+  tenantId     String
+  recipientType RecipientType   // CLIENT | STAFF
+  recipientId  String           // clientUserId or staffUserId
+  type         NotificationType
+  title        String
+  body         String?
+  linkPath     String?
+  projectId    String?
+  read         Boolean          @default(false)
+  readAt       DateTime?
+  createdAt    DateTime         @default(now())
+
+  @@index([tenantId, recipientType, recipientId, read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+enum StaffRole {
+  ADMIN
+  DELIVERY_LEAD
+  ENGINEER
+  VIEWER
+}
+
+enum ApprovalType {
+  MILESTONE
+  DELIVERABLE
+  UAT
+  CHANGE_REQUEST
+  DEPLOYMENT
+}
+
+enum RecipientType {
+  CLIENT
+  STAFF
+}
+
+enum NotificationType {
+  REPORT_PUBLISHED
+  MILESTONE_UPDATED
+  APPROVAL_REQUESTED
+  APPROVAL_COMPLETED
+  FILE_UPLOADED
+  CLIENT_MESSAGE
+  TEAM_MESSAGE
+  INVOICE_CREATED
+  INVOICE_DUE
+  PROJECT_STATUS_CHANGED
+}
+
+enum ClientUserRole {
+  OWNER
+  MEMBER
+}
+
+enum ProjectStatus {
+  DISCOVERY
+  IN_PROGRESS
+  UAT
+  LAUNCHED
+  ON_HOLD
+  COMPLETE
+}
+
+enum MilestoneStatus {
+  PLANNED
+  IN_PROGRESS
+  DONE
+}
+
+enum ReportKind {
+  DAILY
+  WEEKLY
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+enum FileCategory {
+  CONTRACT
+  INVOICE
+  DELIVERABLE
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+enum MessageAuthorType {
+  CLIENT
+  TEAM
+}
+
+enum LeadStatus {
+  NEW
+  WORKING
+  QUALIFIED
+  DISQUALIFIED
+  CONVERTED
+}
+
+enum InquiryForm {
+  CONTACT
+  BOOK
+  SERVICE_CTA
+  HOMEPAGE_CTA
+  LANDING_PAGE
+}
+
+enum ConsentStatus {
+  NOT_REQUIRED
+  GRANTED
+  DECLINED
+}
+
+enum SpamResult {
+  CLEAN
+  SUSPECT
+  REJECTED
+}
+
+enum ActivityType {
+  INQUIRY_RECEIVED
+  LEAD_CREATED
+  STATUS_CHANGED
+  ASSIGNED
+  ESCALATED
+  EMAIL_SENT
+  MEETING_SCHEDULED
+  MEETING_UPDATED
+  SLA_STARTED
+  SLA_BREACHED
+}
+
+enum ActorType {
+  SYSTEM
+  ADMIN
+  WEBHOOK
+}
+
+enum JobType {
+  ACK_EMAIL
+  INTERNAL_NOTIFY
+  ASSIGNMENT
+  SLA_TIMER
+  BOOKING_CONFIRM
+  ASSIGNMENT_NOTIFY
+  SLA_WARNING
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  DEAD
+}
+
+enum EmailType {
+  LEAD_ACK
+  INTERNAL_LEAD_NOTIFY
+  BOOKING_CONFIRM
+  ASSIGNMENT_NOTIFY
+  SLA_WARNING
+  SIDE_EFFECT_FAILURE_ALERT
+  PORTAL_INVITE
+  NOTIFICATION
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum AssignmentStatus {
+  UNASSIGNED
+  ASSIGNED
+  ESCALATED
+}
+
+enum SlaStatus {
+  ACTIVE
+  MET
+  BREACHED
+  ESCALATED
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  RESCHEDULED
+  CANCELED
+}
