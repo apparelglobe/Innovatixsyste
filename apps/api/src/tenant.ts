@@ -45,6 +45,29 @@ export async function resolveTenantFromRequest(prisma: PrismaClient, _host?: str
   return resolveDefaultTenant(prisma);
 }
 
+/**
+ * The public website's tenant. Public routes (leads, invitation accept, webhooks)
+ * NEVER take a tenant id from the request body/headers — they resolve this
+ * trusted tenant from configuration. Today that is the single default tenant;
+ * multi-tenant/custom-domain resolution slots in here later (host → tenant map).
+ */
+export async function resolvePublicSiteTenant(prisma: PrismaClient): Promise<Tenant> {
+  return resolveDefaultTenant(prisma);
+}
+
+/**
+ * Accept a tenant id carried in a session/JWT (or a trusted job payload) ONLY if
+ * it matches the trusted, server-resolved tenant. A forged or foreign tenant id
+ * resolves to null so the caller fails closed (401/refuse). This is the single
+ * place that decides whether a client-presented tenant id is authoritative — the
+ * answer is "only if it equals what the server independently resolved".
+ */
+export async function resolveTrustedTenant(prisma: PrismaClient, presentedTenantId: string | undefined | null): Promise<Tenant | null> {
+  if (!presentedTenantId) return null;
+  const t = await resolveDefaultTenant(prisma);
+  return presentedTenantId === t.id ? t : null;
+}
+
 /** Test/reset helper. */
 export function __clearTenantCache(): void {
   cached = null;

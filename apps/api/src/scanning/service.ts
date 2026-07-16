@@ -144,6 +144,13 @@ export async function processScanJobs(prisma: PrismaClient, now: Date = new Date
     if (!scan) break;
     s.processed++;
     const file = await prisma.projectFile.findUnique({ where: { id: scan.fileId } });
+    // Tenant-ownership guard: the scan job and its file MUST be the same tenant.
+    // A mismatch means data integrity was violated — refuse to act, never scan
+    // (and thus never make available) a file across the tenant boundary.
+    if (file && file.tenantId !== scan.tenantId) {
+      await prisma.fileScan.update({ where: { id: scan.id }, data: { status: 'DEAD', result: 'ERROR', errorCode: 'TENANT_MISMATCH', completedAt: new Date() } }).catch(() => undefined);
+      s.failed++; continue;
+    }
     if (!file || !file.storageKey) { await applyOutcomeById(prisma, scan.id, null, { result: 'ERROR', provider: scan.provider ?? 'unknown', errorCode: 'OBJECT_MISSING' }); s.failed++; continue; }
     let outcome: ScanOutcome;
     try {

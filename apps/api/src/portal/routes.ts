@@ -24,6 +24,7 @@ import { notifyStaff } from '../notifications/service';
 import { requireClientPermission } from '../client/authz';
 import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
+import { findClientOrgInvoice, findClientVisibleFile } from '../lib/scoped';
 import { randomUUID } from 'node:crypto';
 
 type Ctx = { session: NonNullable<ReturnType<typeof verifySession>> };
@@ -217,10 +218,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.get('/portal/invoices/:id', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    const inv = await prisma.invoice.findFirst({
-      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org } },
-      include: { lineItems: { orderBy: { createdAt: 'asc' } } },
-    });
+    const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id, { lineItems: { orderBy: { createdAt: 'asc' } } });
     if (!inv) return reply.code(404).send({ ok: false });
     return reply.send({ ok: true, invoice: await enrichInvoice(inv) });
   });
@@ -333,9 +331,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!ctx) return;
     // Scoped + current + client-visible + scan-clean (AVAILABLE). Internal-only,
     // quarantined, unscanned, non-current, deleted, or cross-org → 404 (no reveal).
-    const file = await prisma.projectFile.findFirst({
-      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, deletedAt: null, clientVisible: true, isCurrent: true, state: 'AVAILABLE', project: { clientOrgId: ctx.session.org } },
-    });
+    const file = await findClientVisibleFile(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id);
     if (!file?.storageKey) return reply.code(404).send({ ok: false });
     await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ProjectFile', entityId: file.id, action: 'FILE_DOWNLOADED', actorType: 'ADMIN', actorId: ctx.session.sub, data: { via: 'portal', version: file.version } } }).catch(() => undefined);
     const signed = await storage().getSignedUrl(file.storageKey, config.S3_SIGNED_URL_TTL_SECONDS);

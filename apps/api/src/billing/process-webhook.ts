@@ -52,6 +52,17 @@ export async function processProviderWebhook(
     (parsed.paymentIntentId ? await prisma.payment.findFirst({ where: { paymentIntentId: parsed.paymentIntentId } }) : null) ??
     (await prisma.payment.findFirst({ where: { invoiceId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } }));
 
+  // Tenant-ownership guard: if the event resolves to a Payment (via session/intent
+  // id), it MUST belong to the same tenant as — and reference — the invoice named
+  // in the event. This blocks a (multi-account) webhook whose session id points at
+  // one tenant's payment from settling another tenant's invoice.
+  if (payment && (payment.tenantId !== invoice.tenantId || payment.invoiceId !== invoiceId)) {
+    await prisma.auditEvent.create({
+      data: { tenantId: invoice.tenantId, entityType: 'Payment', entityId: payment.id, action: 'PAYMENT_TENANT_MISMATCH', actorType: 'SYSTEM', actorId: `webhook:${providerName}`, data: { eventInvoiceId: invoiceId, paymentInvoiceId: payment.invoiceId, paymentTenantId: payment.tenantId } },
+    }).catch(() => undefined);
+    return 'mismatch';
+  }
+
   const auditFail = (action: string, reason: string) =>
     prisma.auditEvent.create({
       data: { tenantId: invoice.tenantId, entityType: 'Payment', entityId: payment?.id ?? invoiceId, action, actorType: 'SYSTEM', actorId: `webhook:${providerName}`, data: { reason, invoiceId } },

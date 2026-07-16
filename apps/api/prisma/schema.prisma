@@ -486,6 +486,7 @@ model Approval {
   note         String?
   createdAt    DateTime       @default(now())
 
+  @@index([tenantId, projectId])
   @@index([projectId, status])
   @@map("approvals")
 }
@@ -515,6 +516,7 @@ model ProjectFile {
   uploadedAt DateTime     @default(now())
 
   @@index([projectId, category])
+  @@index([tenantId, projectId])
   @@index([rootId])
   @@map("project_files")
 }
@@ -539,6 +541,7 @@ model Invoice {
   lineItems  InvoiceLineItem[]
   payments   Payment[]
 
+  @@index([tenantId, projectId])
   @@index([projectId, status])
   @@map("invoices")
 }
@@ -629,6 +632,7 @@ model PortalMessage {
   readByTeamAt DateTime?
   createdAt    DateTime          @default(now())
 
+  @@index([tenantId, projectId])
   @@index([projectId, createdAt])
   @@map("portal_messages")
 }
