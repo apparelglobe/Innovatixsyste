@@ -20,8 +20,10 @@ import { convertLead } from './conversion';
 import { storage, objectKey, validateUpload } from '../storage';
 import { enrichApprovals } from '../lib/approvals';
 import { enrichInvoice } from '../lib/invoices';
+import { randomUUID } from 'node:crypto';
 import { config } from '../config';
-import { payments, renderInvoicePdfFrom } from '../billing';
+import { renderInvoicePdfFrom } from '../billing';
+import { checkoutGateway } from '../billing/gateway';
 import { inviteClientUser } from './client-users';
 import { issueInvitation, resendInvitation, revokeInvitation } from '../invitations/service';
 import { invitationStatus } from '../lib/invitations';
@@ -310,13 +312,48 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   // ── Payment link (provider boundary; stub in dev) ──
   app.post('/admin/invoices/:id/payment-link', async (req, reply) => {
     const ctx = await requireStaff(req, reply, 'invoice:write'); if (!ctx) return;
-    const inv = await prisma.invoice.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId } });
+    const inv = await prisma.invoice.findFirst({
+      where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId },
+      include: { project: { select: { clientOrgId: true } } },
+    });
     if (!inv) return reply.code(404).send({ ok: false });
     if (inv.status === 'PAID') return reply.code(409).send({ ok: false, message: 'Invoice already paid.' });
-    const link = payments().createPaymentLink({ invoiceId: inv.id, number: inv.number, amountCents: inv.amountCents, currency: inv.currency, portalOrigin: config.PORTAL_WEB_ORIGIN[0] });
-    await prisma.invoice.update({ where: { id: inv.id }, data: { paymentUrl: link.url } });
-    await audit(ctx.tenantId, ctx.session.sub, 'Invoice', inv.id, 'INVOICE_PAYMENT_LINK', { provider: payments().name });
-    return reply.send({ ok: true, paymentUrl: link.url });
+    if (inv.status === 'DRAFT') return reply.code(409).send({ ok: false, message: 'Invoice is not payable yet (still a draft).' });
+    if (inv.amountCents <= 0) return reply.code(409).send({ ok: false, message: 'Invoice has no payable amount.' });
+
+    // Staff-generated links go through the SAME real payment gateway as client
+    // self-checkout (`checkoutGateway()` = StripeGateway when PAYMENTS_PROVIDER=stripe),
+    // so a staff link is a real Stripe Checkout Session — never a stub in prod.
+    let customerEmail: string | null = null;
+    if (inv.billingContactUserId) {
+      const bc = await prisma.clientUser.findFirst({ where: { id: inv.billingContactUserId, tenantId: ctx.tenantId }, select: { email: true } });
+      if (bc?.email) customerEmail = bc.email;
+    }
+    const gateway = checkoutGateway();
+    const idempotencyKey = `stafflink_${inv.id}_${randomUUID().slice(0, 12)}`;
+    let session;
+    try {
+      session = await gateway.createCheckoutSession({
+        invoiceId: inv.id, tenantId: inv.tenantId, number: inv.number,
+        amountCents: inv.amountCents, currency: inv.currency,
+        portalOrigin: config.PORTAL_WEB_ORIGIN[0] || 'http://localhost:3001',
+        customerEmail, idempotencyKey,
+      });
+    } catch (err) {
+      req.log.error({ err: err instanceof Error ? err.message : String(err), invoiceId: inv.id }, 'staff payment-link session creation failed');
+      return reply.code(502).send({ ok: false, message: 'Could not create a payment link. Please try again.' });
+    }
+    // Record the pending payment so the webhook can settle it (same as client checkout).
+    await prisma.payment.create({
+      data: {
+        tenantId: inv.tenantId, clientOrgId: inv.project.clientOrgId, invoiceId: inv.id,
+        provider: gateway.name, amountCents: inv.amountCents, currency: inv.currency,
+        status: 'PENDING', checkoutSessionId: session.sessionId, providerCustomerId: session.providerCustomerId ?? null,
+      },
+    });
+    await prisma.invoice.update({ where: { id: inv.id }, data: { paymentUrl: session.url } });
+    await audit(ctx.tenantId, ctx.session.sub, 'Invoice', inv.id, 'INVOICE_PAYMENT_LINK', { provider: gateway.name, sessionId: session.sessionId });
+    return reply.send({ ok: true, paymentUrl: session.url, provider: gateway.name });
   });
 
   // ── Invoice PDF (staff) — rendered on demand ──

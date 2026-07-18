@@ -1,14 +1,15 @@
-// Billing provider factory. Selects the payment provider by config; today only
-// the stub exists (StripePaymentProvider slots in here behind the same iface).
-import { config } from '../config';
+// Legacy stub payment provider — used ONLY by the dev/staging stub webhook path
+// (`src/webhooks/payments.ts`, active when PAYMENTS_PROVIDER=stub). The real,
+// production payment flow — BOTH client self-checkout AND staff-generated payment
+// links — goes through `checkoutGateway()` in `./gateway.ts` (StripeGateway when
+// PAYMENTS_PROVIDER=stripe, verified via `/v1/webhooks/stripe`). This factory is
+// intentionally not wired to Stripe; do not route production links through it.
 import { StubPaymentProvider, type PaymentProvider } from './payments';
 
 let cached: PaymentProvider | null = null;
 
 export function payments(): PaymentProvider {
   if (cached) return cached;
-  // config.PAYMENTS_PROVIDER is 'stub' by default; 'stripe' would construct the
-  // real provider once implemented.
   cached = new StubPaymentProvider();
   return cached;
 }
