@@ -8,8 +8,8 @@ import { NotificationBell } from './NotificationBell';
 const NAV = [
   { key: 'projects', icon: <FolderKanban size={16} />, label: 'Projects', href: '/admin' },
   { key: 'leads', icon: <UserPlus size={16} />, label: 'Leads', href: '/admin/leads' },
-  { key: 'notifications', icon: <Bell size={16} />, label: 'Notifications', soon: true },
-  { key: 'settings', icon: <Settings size={16} />, label: 'Settings', soon: true },
+  { key: 'notifications', icon: <Bell size={16} />, label: 'Notifications', href: '/admin/notifications' },
+  { key: 'settings', icon: <Settings size={16} />, label: 'Settings', href: '/admin/settings' },
 ];
 
 const ROLE_LABEL: Record<string, string> = { ADMIN: 'Admin', DELIVERY_LEAD: 'Delivery Lead', ENGINEER: 'Engineer', VIEWER: 'Viewer' };
@@ -32,9 +32,7 @@ export function AdminShell({
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 px-3 py-2">
-          {NAV.map((n) => n.soon ? (
-            <div key={n.key} title="Available soon" className="flex cursor-default items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-neutral-500">{n.icon} {n.label}</div>
-          ) : (
+          {NAV.map((n) => (
             <a key={n.key} href={n.href} className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${active === n.key ? 'bg-primary/15 font-semibold text-primary-light' : 'text-neutral-400 hover:bg-white/[0.04] hover:text-white'}`}>{n.icon} {n.label}</a>
           ))}
         </nav>

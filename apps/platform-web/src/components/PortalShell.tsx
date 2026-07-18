@@ -15,7 +15,7 @@ const NAV = [
   { key: 'invoices', icon: <Receipt size={16} />, label: 'Invoices', href: '/invoices' },
   { key: 'messages', icon: <MessageSquare size={16} />, label: 'Messages', href: '/messages' },
   { key: 'team', icon: <Users size={16} />, label: 'Team', href: '/team' },
-  { key: 'settings', icon: <Settings size={16} />, label: 'Settings', soon: true },
+  { key: 'settings', icon: <Settings size={16} />, label: 'Settings', href: '/settings' },
 ];
 
 export function PortalShell({
@@ -37,18 +37,12 @@ export function PortalShell({
           <span className="text-sm font-extrabold tracking-tight text-white">Innovatix <span className="text-primary-light">Portal</span></span>
         </div>
         <nav className="flex-1 space-y-0.5 px-3 py-2">
-          {NAV.map((n) =>
-            n.soon ? (
-              <div key={n.key} title="Available soon" className="flex cursor-default items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-neutral-500">
-                {n.icon} {n.label}
-              </div>
-            ) : (
-              <a key={n.key} href={n.href}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${active === n.key ? 'bg-primary/15 font-semibold text-primary-light' : 'text-neutral-400 hover:bg-white/[0.04] hover:text-white'}`}>
-                {n.icon} {n.label}
-              </a>
-            ),
-          )}
+          {NAV.map((n) => (
+            <a key={n.key} href={n.href}
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${active === n.key ? 'bg-primary/15 font-semibold text-primary-light' : 'text-neutral-400 hover:bg-white/[0.04] hover:text-white'}`}>
+              {n.icon} {n.label}
+            </a>
+          ))}
         </nav>
         <div className="border-t border-line px-3 py-3">
           <button onClick={logout} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-neutral-400 transition hover:bg-white/[0.04] hover:text-white">

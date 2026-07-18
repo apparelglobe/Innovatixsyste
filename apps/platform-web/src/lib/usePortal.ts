@@ -15,7 +15,7 @@ export type Project = {
   messages: { id: string; authorType: 'CLIENT' | 'TEAM'; body: string; createdAt: string }[];
 };
 export type ClientRole = 'OWNER' | 'MEMBER';
-export type Me = { user: { firstName?: string; lastName?: string; role?: ClientRole }; org: { name: string } };
+export type Me = { user: { firstName?: string; lastName?: string; email?: string; role?: ClientRole }; org: { name: string } };
 
 export function usePortal() {
   const router = useRouter();
