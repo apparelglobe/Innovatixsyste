@@ -165,8 +165,12 @@ export async function start(): Promise<void> {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  await app.listen({ port: config.PORT, host: '0.0.0.0' });
-  app.log.info(`innovatix-api listening on :${config.PORT} (env=${config.NODE_ENV})`);
+  // Bind host is configurable: default 0.0.0.0 for container/dev, but a
+  // single-box deploy behind a same-origin proxy should set HOST=127.0.0.1 so
+  // the API is never directly reachable from the public interface.
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen({ port: config.PORT, host });
+  app.log.info(`innovatix-api listening on ${host}:${config.PORT} (env=${config.NODE_ENV})`);
 }
 
 // Auto-start unless imported by tests.
