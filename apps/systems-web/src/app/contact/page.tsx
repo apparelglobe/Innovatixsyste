@@ -50,6 +50,7 @@ export default function ContactPage() {
               <a href="/book" className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-primary-light hover:underline">Book a consultation <ArrowRight size={14} /></a>
             </div>
             <p className="mt-6 text-sm text-neutral-400">Or email us at <a href={`mailto:${SITE.email}`} className="text-primary-light hover:underline">{SITE.email}</a></p>
+            <p className="mt-2 text-sm text-neutral-400">Prefer to call? <a href={SITE.phoneHref} className="font-semibold text-primary-light hover:underline">{SITE.phone}</a></p>
           </div>
           <div className="rounded-2xl border border-line bg-surface p-6 md:p-8">
             <LeadForm variant="contact" />

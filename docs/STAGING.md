@@ -88,7 +88,7 @@ The checklist below is backed by runnable scripts — not just prose:
 ```bash
 scripts/verify-prod-config.sh apps/api/.env.production   # clean-env config guard (no boot, no DB)
 scripts/backup-db.sh                                     # pre-deploy backup (rollback point)
-scripts/smoke-test.sh https://staging-api.innovatixsystems.com   # post-deploy smoke test
+scripts/smoke-test.sh https://staging-api.innovatixsystem.com   # post-deploy smoke test
 ```
 
 - **`verify-prod-config.sh`** runs the API's real boot-time guard (`src/config.ts`

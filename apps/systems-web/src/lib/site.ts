@@ -48,7 +48,7 @@ function resolveSiteUrl(): string {
     if (enforce) {
       throw new Error(
         '[site] NEXT_PUBLIC_SITE_URL is required for production builds. ' +
-          'Set NEXT_PUBLIC_SITE_URL=https://innovatixsystems.com before building.',
+          'Set NEXT_PUBLIC_SITE_URL=https://innovatixsystem.com before building.',
       );
     }
     return 'http://localhost:3000';
@@ -87,7 +87,10 @@ export const SITE = {
   tagline: 'Enterprise software, AI, and platforms — engineered to run your business as one system.',
   description:
     'Innovatix Systems is an enterprise software company delivering custom software, AI, enterprise systems, cloud, data, and security — with a connected client portal for full project transparency.',
-  email: 'hello@innovatixsystems.com',
+  email: 'support@innovatixmarketing.com',
+  /** Main phone line. `phone` = display, `phoneHref` = tel: (E.164). */
+  phone: '(866) 754-4814',
+  phoneHref: 'tel:+18667544814',
 } as const;
 
 /** Build an absolute URL from a path, always on the canonical host. */

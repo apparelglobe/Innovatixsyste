@@ -36,7 +36,18 @@ export function organizationJsonLd() {
     url: SITE.url,
     description: SITE.description,
     email: SITE.email,
+    telephone: SITE.phoneHref.replace('tel:', ''),
     slogan: SITE.tagline,
+    contactPoint: [
+      {
+        '@type': 'ContactPoint',
+        telephone: SITE.phoneHref.replace('tel:', ''),
+        contactType: 'sales',
+        email: SITE.email,
+        areaServed: 'US',
+        availableLanguage: 'English',
+      },
+    ],
   };
 }
 

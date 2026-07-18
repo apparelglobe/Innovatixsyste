@@ -106,7 +106,7 @@ export default function Page() {
       <h2>Contact us</h2>
       <p>
         Questions about these terms? Email{' '}
-        <a href="mailto:hello@innovatixsystems.com">hello@innovatixsystems.com</a>.
+        <a href="mailto:support@innovatixmarketing.com">support@innovatixmarketing.com</a>.
       </p>
     </LegalPage>
   );

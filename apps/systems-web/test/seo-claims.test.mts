@@ -56,7 +56,7 @@ test('isLocalHost flags loopback and private ranges (never shipped as canonical)
   for (const h of ['localhost', '127.0.0.1', '::1', '0.0.0.0', '192.168.1.5', '10.0.0.3', 'dev.local']) {
     assert.equal(isLocalHost(h), true, `${h} must be treated as local`);
   }
-  for (const h of ['innovatixsystems.com', 'www.innovatixsystems.com']) {
+  for (const h of ['innovatixsystem.com', 'www.innovatixsystem.com']) {
     assert.equal(isLocalHost(h), false, `${h} must NOT be treated as local`);
   }
 });

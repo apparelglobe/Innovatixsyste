@@ -30,7 +30,7 @@ export default function AdminLoginPage() {
           <p className="mt-1 text-sm text-neutral-400">Delivery workspace — Innovatix staff only.</p>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <label className="block"><span className="mb-1.5 block text-sm font-medium text-neutral-200">Email</span>
-              <input name="email" type="email" required autoComplete="email" className="w-full rounded-lg border border-line-strong bg-white/[0.03] px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-500 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="you@innovatixsystems.com" /></label>
+              <input name="email" type="email" required autoComplete="email" className="w-full rounded-lg border border-line-strong bg-white/[0.03] px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-500 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="you@innovatixsystem.com" /></label>
             <label className="block"><span className="mb-1.5 block text-sm font-medium text-neutral-200">Password</span>
               <input name="password" type="password" required autoComplete="current-password" className="w-full rounded-lg border border-line-strong bg-white/[0.03] px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-500 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="••••••••" /></label>
             {state === 'error' && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300">Invalid email or password.</p>}

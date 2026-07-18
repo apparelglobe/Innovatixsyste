@@ -9,12 +9,18 @@ export function Footer() {
     <footer className="bg-ink text-neutral-300">
       <Container className="grid gap-10 py-16 md:grid-cols-5">
         <div className="md:col-span-2">
-          <div className="flex items-center gap-2.5">
-            <Image src="/logo-mark-ui.png" alt="" width={40} height={40} className="h-9 w-9 object-contain" />
-            <span className="text-lg font-extrabold text-white">Innovatix Systems</span>
+          <div className="flex items-center">
+            <span className="inline-flex items-center rounded-lg bg-white px-2.5 py-1.5">
+              <Image src="/innovatix-logo.png" alt="Innovatix" width={480} height={191} className="h-8 w-auto" />
+            </span>
           </div>
           <p className="mt-3 max-w-sm text-sm text-neutral-400">{SITE.tagline}</p>
-          <p className="mt-4 text-sm text-neutral-400">{SITE.email}</p>
+          <p className="mt-4 text-sm text-neutral-400">
+            <a href={`mailto:${SITE.email}`} className="hover:text-white">{SITE.email}</a>
+          </p>
+          <p className="mt-1 text-sm text-neutral-400">
+            <a href={SITE.phoneHref} className="hover:text-white">{SITE.phone}</a>
+          </p>
         </div>
         {SERVICE_CATEGORIES.slice(0, 3).map((cat) => (
           <div key={cat.key}>

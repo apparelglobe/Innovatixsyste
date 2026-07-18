@@ -46,7 +46,7 @@ if (!raw) {
   if (enforce) {
     fail(
       'NEXT_PUBLIC_SITE_URL is required for production builds.\n' +
-        '  Set NEXT_PUBLIC_SITE_URL=https://innovatixsystems.com before building.',
+        '  Set NEXT_PUBLIC_SITE_URL=https://innovatixsystem.com before building.',
     );
   }
   warn('NEXT_PUBLIC_SITE_URL not set — using http://localhost:3000 (local build only).');

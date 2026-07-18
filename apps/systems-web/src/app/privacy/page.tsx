@@ -21,7 +21,7 @@ export default function Page() {
       <p>
         Innovatix Systems (“Innovatix,” “we,” “us,” or “our”) is an enterprise software company. This policy applies to
         our marketing website, our client portal, and the services we provide to clients. If you have any questions,
-        contact us at <a href="mailto:hello@innovatixsystems.com">hello@innovatixsystems.com</a>.
+        contact us at <a href="mailto:support@innovatixmarketing.com">support@innovatixmarketing.com</a>.
       </p>
 
       <h2>Information we collect</h2>
@@ -106,7 +106,7 @@ export default function Page() {
       <p>
         Depending on where you live, you may have rights to access, correct, delete, or port your personal information,
         or to object to or restrict certain processing. To exercise any of these, email{' '}
-        <a href="mailto:hello@innovatixsystems.com">hello@innovatixsystems.com</a> and we will respond as required by
+        <a href="mailto:support@innovatixmarketing.com">support@innovatixmarketing.com</a> and we will respond as required by
         applicable law. You can unsubscribe from marketing emails at any time using the link in the message.
       </p>
 
@@ -131,7 +131,7 @@ export default function Page() {
       <h2>Contact us</h2>
       <p>
         Questions about this policy or your information? Email{' '}
-        <a href="mailto:hello@innovatixsystems.com">hello@innovatixsystems.com</a>.
+        <a href="mailto:support@innovatixmarketing.com">support@innovatixmarketing.com</a>.
       </p>
     </LegalPage>
   );

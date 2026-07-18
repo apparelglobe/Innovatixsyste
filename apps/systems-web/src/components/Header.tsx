@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { Menu, X, ChevronDown } from 'lucide-react';
+import { Menu, X, ChevronDown, Phone } from 'lucide-react';
 import { Container, Button } from '@innovatix/ui';
 import { PRIMARY_NAV, SERVICE_CATEGORIES } from '@/lib/nav';
+import { SITE } from '@/lib/site';
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -13,11 +14,10 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-base/80 backdrop-blur-md">
       <Container className="flex h-16 items-center justify-between gap-4">
-        {/* Wordmark */}
-        <a href="/" className="flex items-center gap-2.5" aria-label="Innovatix Systems home">
-          <Image src="/logo-mark-ui.png" alt="" width={40} height={40} priority className="h-9 w-9 object-contain" />
-          <span className="text-lg font-extrabold tracking-tight text-white">
-            Innovatix<span className="text-primary-light"> Systems</span>
+        {/* Logo */}
+        <a href="/" className="flex items-center" aria-label="Innovatix home">
+          <span className="inline-flex items-center rounded-lg bg-white px-2.5 py-1.5">
+            <Image src="/innovatix-logo.png" alt="Innovatix" width={480} height={191} priority className="h-7 w-auto" />
           </span>
         </a>
 
@@ -41,7 +41,14 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="hidden lg:block">
+        <div className="hidden items-center gap-3 lg:flex">
+          <a
+            href={SITE.phoneHref}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-300 transition hover:text-white"
+            data-cta="Call" data-cta-loc="header"
+          >
+            <Phone size={15} /> {SITE.phone}
+          </a>
           <Button href="/book" size="md" data-cta="Book a Consultation" data-cta-loc="header">Book a Consultation</Button>
         </div>
 
@@ -119,6 +126,13 @@ export function Header() {
               ))}
             </nav>
             <Button href="/book" className="w-full" data-cta="Book a Consultation" data-cta-loc="header-mobile">Book a Consultation</Button>
+            <a
+              href={SITE.phoneHref}
+              className="flex items-center justify-center gap-1.5 rounded-btn border border-line py-2 text-sm font-semibold text-neutral-200"
+              data-cta="Call" data-cta-loc="header-mobile"
+            >
+              <Phone size={15} /> Call {SITE.phone}
+            </a>
           </Container>
         </div>
       )}

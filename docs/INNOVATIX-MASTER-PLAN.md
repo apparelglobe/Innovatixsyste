@@ -2,7 +2,7 @@
 
 **Version:** 1.2 · **Status:** Approved in principle · **Commercial priority #1:** launch the public **Innovatix Systems** software-development website (SEO + lead gen + Google Ads), then build the authenticated platform alongside it without blocking the website.
 
-**Brand architecture (approved):** two public brands under Innovatix Group — **Innovatix Systems** (`innovatixsystems.com`, software/AI/enterprise engineering — this plan) and **Innovatix Marketing** (separate domain/SEO/Ads — later track). Both share `platform-web` + `api`; separate front-ends and marketing sites.
+**Brand architecture (approved):** two public brands under Innovatix Group — **Innovatix Systems** (`innovatixsystem.com`, software/AI/enterprise engineering — this plan) and **Innovatix Marketing** (separate domain/SEO/Ads — later track). Both share `platform-web` + `api`; separate front-ends and marketing sites.
 
 **Website IA + service taxonomy:** defined by `INNOVATIX-SYSTEMS-BENCHMARK.md` (Step 0, complete — 30 enterprise-software firms benchmarked across 18 dimensions). Services use the **8-category** architecture: Software Engineering · AI Services · Enterprise Systems · Cloud & Infrastructure · Data & Analytics · Security · Digital Transformation · Team Services. Nav: `Services · Solutions · Industries · Technologies · Case Studies · Resources · Company · [Book a Consultation]`.
 
@@ -232,7 +232,7 @@ Status vocabulary: Not reviewed → Audit in progress → Ready for planning →
 1. Fresh `innovatix-os` repo (recommended) vs. build in current workspace.
 2. Confirm Vercel for systems-web.
 3. Brand assets — reuse a token set or fresh Innovatix palette/logo.
-4. `innovatixsystems.com` registered/available for DNS.
+4. `innovatixsystem.com` registered/available for DNS.
 5. e-sign provider (platform). 6. MedJAAF repo access for verified case study.
 
 **Recommendation:** fresh multi-tenant monorepo (shared-schema + RLS), build systems-web first (Track A/B), dogfood the platform (Track C) — "Innovatix runs Innovatix."

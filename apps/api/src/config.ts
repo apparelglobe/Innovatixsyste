@@ -38,8 +38,8 @@ const schema = z.object({
   ABUSE_HASH_SALT: z.string().default('dev-salt-change-me'),
 
   EMAIL_TRANSPORT: z.enum(['outbox', 'postmark']).default('outbox'),
-  EMAIL_FROM: z.string().default('Innovatix Systems <hello@innovatixsystems.com>'),
-  EMAIL_INTERNAL_TO: z.string().default('sales@innovatixsystems.com'),
+  EMAIL_FROM: z.string().default('Innovatix Systems <hello@innovatixsystem.com>'),
+  EMAIL_INTERNAL_TO: z.string().default('sales@innovatixsystem.com'),
   POSTMARK_SERVER_TOKEN: z.string().optional().default(''),
   POSTMARK_MESSAGE_STREAM: z.string().default('outbound'),
 

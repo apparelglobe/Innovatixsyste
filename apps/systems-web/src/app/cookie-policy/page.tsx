@@ -68,7 +68,7 @@ export default function Page() {
       <h2>Related policies</h2>
       <p>
         For how we handle personal information generally, see our <a href="/privacy">Privacy Policy</a>. Questions? Email{' '}
-        <a href="mailto:hello@innovatixsystems.com">hello@innovatixsystems.com</a>.
+        <a href="mailto:support@innovatixmarketing.com">support@innovatixmarketing.com</a>.
       </p>
     </LegalPage>
   );

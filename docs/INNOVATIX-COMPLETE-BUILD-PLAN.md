@@ -6,10 +6,10 @@
 ## Operational directives
 - **Ports:** backend (`apps/api`) → **:4040**; frontend (`apps/systems-web`) → **:4030**. (platform-web stays :3001.)
 - **Build order:** the **development front end (Innovatix Systems website) FIRST**, then the **marketing front end** (`apps/marketing-services-web`, a separate site — Launch 5).
-- Canonical host `SITE_URL=https://innovatixsystems.com` (never hardcoded; only `src/lib/site.ts`).
+- Canonical host `SITE_URL=https://innovatixsystem.com` (never hardcoded; only `src/lib/site.ts`).
 
 ## Two brands (separate public sites)
-- **Innovatix Systems** (innovatixsystems.com) — custom software, enterprise systems, AI, cloud/DevOps, data, security, digital transformation, dedicated teams. **First commercial priority.**
+- **Innovatix Systems** (innovatixsystem.com) — custom software, enterprise systems, AI, cloud/DevOps, data, security, digital transformation, dedicated teams. **First commercial priority.**
 - **Innovatix Marketing** (separate domain, later) — SEO, Google/Microsoft/Meta/LinkedIn Ads, content, email, automation, CRO, landing pages, analytics/attribution.
 
 ## Systems website — 8 service categories
@@ -47,4 +47,4 @@ Visitor → capture UTM/GCLID/referrer → submit form / book → `POST /v1/lead
 ## Later (platform-web / api) — Launches 2–5
 CRM/leads/opportunities · discovery/requirements · proposal engine · contracts + e-sign (integrate provider) · billing/Stripe · project auto-provisioning · development-reporting engine (AI summarizes verified data only — "no source, no claim"; human approval initially) · weighted progress calc · change requests · QA/UAT/deploy · support/CS · executive dashboards · enterprise foundations (multi-tenant, RLS, RBAC, audit, etc.). Build vs integrate list per §29. Full lifecycle → **"Innovatix runs on Innovatix."**
 
-## Domains (§30): innovatixsystems.com canonical; 301 www + innovatixsystem(.com/www) → apex, preserve path+query.
+## Domains (§30): innovatixsystem.com canonical; 301 www + innovatixsystem(.com/www) → apex, preserve path+query.
