@@ -81,6 +81,28 @@ in git. Defaults come from `apps/api/src/config.ts`.
 > Frontends have their own `NEXT_PUBLIC_*` (API base URL, site URL) — set at
 > **build time**; a rebuild is required to change them.
 
+## Executable tooling (run these)
+
+The checklist below is backed by runnable scripts — not just prose:
+
+```bash
+scripts/verify-prod-config.sh apps/api/.env.production   # clean-env config guard (no boot, no DB)
+scripts/backup-db.sh                                     # pre-deploy backup (rollback point)
+scripts/smoke-test.sh https://staging-api.innovatixsystems.com   # post-deploy smoke test
+```
+
+- **`verify-prod-config.sh`** runs the API's real boot-time guard (`src/config.ts`
+  Zod schema + `validateProductionSecrets`) against a candidate env file under
+  `env -i` (a genuinely clean shell) — a missing/weak/placeholder secret or an
+  absent provider key fails here, naming each var, before you ever deploy. A
+  filled-in copy of `apps/api/.env.production.example` passes; the template
+  itself is the self-test.
+- **`smoke-test.sh`** probes a running API: `/livez`, `/health`, `/readyz`
+  (asserts `db=ok`), that `/metrics` is token-gated (401 without a bearer token
+  when `METRICS_TOKEN` is set), and a real `POST /v1/leads` write. Exit 0 = all
+  green. Set `METRICS_TOKEN` to also verify the authorized `/metrics` path;
+  `SKIP_LEAD=1` for a read-only probe.
+
 ## Deployment checklist (staging & prod are identical steps)
 
 **Pre-deploy**
@@ -118,8 +140,11 @@ Rollback is code-first (fast, safe); data rollback is last resort.
 
 - Staging environment is **specified here but not yet provisioned** — infra
   (DB, buckets, ClamAV, secrets, DNS, CI target) is a prod task and out of scope
-  for the local-only work.
-- CI does not yet auto-deploy; deploys are manual per this checklist.
+  for the local-only work. The config guard, backup, and smoke-test scripts are
+  built and verified locally; they run against the staging hosts once those
+  exist.
+- CI does not yet auto-deploy; deploys are manual per this checklist (the smoke
+  test + config verifier are the automation hooks a pipeline would call).
 - Migration policy is documented (forward-only, additive) but not yet enforced by
   a CI check.
 - `NEXT_PUBLIC_*` for staging frontends must be finalized when the staging

@@ -14,7 +14,11 @@
     "test:integration": "npm run test:integration -w apps/api",
     "test:e2e": "npm run test:e2e -w apps/api",
     "test:db:prepare": "npm run test:db:prepare -w apps/api",
-    "test:db:reset": "npm run test:db:reset -w apps/api"
+    "test:db:reset": "npm run test:db:reset -w apps/api",
+    "db:backup": "bash scripts/backup-db.sh",
+    "db:restore": "bash scripts/restore-db.sh",
+    "verify:prod-config": "bash scripts/verify-prod-config.sh",
+    "smoke": "bash scripts/smoke-test.sh"
   },
   "devDependencies": {
     "turbo": "^2.1.3",
