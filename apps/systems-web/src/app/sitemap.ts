@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next';
 import { absoluteUrl } from '@/lib/site';
 import { publishedServiceSlugs } from '@/lib/services';
 import { verifiedCaseStudySlugs } from '@/lib/case-studies';
+import { articleSlugs } from '@/lib/articles';
 import { SERVICE_CATEGORIES } from '@/lib/nav';
 
 /**
@@ -50,5 +51,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
-  return [...staticRoutes, ...categoryRoutes, ...serviceRoutes, ...caseStudyRoutes];
+  const articleRoutes: MetadataRoute.Sitemap = articleSlugs().map((slug) => ({
+    url: absoluteUrl(`/resources/${slug}`),
+    lastModified,
+    changeFrequency: 'monthly',
+    priority: 0.5,
+  }));
+
+  return [...staticRoutes, ...categoryRoutes, ...serviceRoutes, ...caseStudyRoutes, ...articleRoutes];
 }

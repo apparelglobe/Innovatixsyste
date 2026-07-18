@@ -3,6 +3,10 @@ import { ArrowRight } from 'lucide-react';
 import { Container, Section, Button, Badge, Eyebrow, Card } from '@innovatix/ui';
 import { pageMetadata, breadcrumbJsonLd } from '@/lib/seo';
 import { JsonLd } from '@/components/JsonLd';
+import { articleList } from '@/lib/articles';
+
+const fmtDate = (iso: string) =>
+  new Date(iso + 'T00:00:00Z').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 
 export const metadata: Metadata = pageMetadata({
   title: 'Resources | Innovatix Systems',
@@ -44,6 +48,27 @@ export default function Page() {
       </section>
 
       <Section>
+        <Container>
+          <Eyebrow>Latest articles</Eyebrow>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">Articles</h2>
+          <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {articleList().map((a) => (
+              <a key={a.slug} href={`/resources/${a.slug}`} className="group">
+                <Card className="flex h-full flex-col transition-colors group-hover:border-primary/50">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{fmtDate(a.date)} · {a.readMinutes} min read</div>
+                  <h3 className="mt-2 text-base font-bold text-white">{a.title}</h3>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-neutral-400">{a.description}</p>
+                  <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">
+                    Read <ArrowRight size={14} />
+                  </span>
+                </Card>
+              </a>
+            ))}
+          </div>
+        </Container>
+      </Section>
+
+      <Section tone="surface" className="border-y border-line">
         <Container>
           <Eyebrow>What we write about</Eyebrow>
           <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">Topics we cover</h2>
