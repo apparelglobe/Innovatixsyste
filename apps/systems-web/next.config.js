@@ -20,6 +20,14 @@ const nextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
+  // Same-origin proxy to the Innovatix API (lead pipeline) so the browser posts
+  // to https://<site>/api/inx/* (which nginx already routes here on :4030) and
+  // this server forwards to the API on localhost:4040 — no public API vhost, no
+  // cross-origin CORS. Build with NEXT_PUBLIC_API_BASE_URL=https://<site>/api/inx.
+  async rewrites() {
+    const apiOrigin = process.env.INNOVATIX_API_ORIGIN || 'http://127.0.0.1:4040';
+    return [{ source: '/api/inx/:path*', destination: `${apiOrigin}/v1/:path*` }];
+  },
   // Canonicalize www -> apex (same-deployment). Singular domain -> apex is
   // configured at the Vercel domain level (defensive redirect domain).
   async redirects() {

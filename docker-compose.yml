@@ -19,7 +19,8 @@ services:
       # deterministic, case-aware collation for reliable citext / lower() indexes
       POSTGRES_INITDB_ARGS: '--encoding=UTF8'
     ports:
-      - '5432:5432'
+      # Bind to loopback only — never expose Postgres on a public interface.
+      - '127.0.0.1:5432:5432'
     volumes:
       - innovatix_pgdata:/var/lib/postgresql/data
     healthcheck:
