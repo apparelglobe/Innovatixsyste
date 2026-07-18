@@ -99,6 +99,10 @@ const schema = z.object({
   SENTRY_DSN: z.string().optional().default(''),
   ALERT_WEBHOOK_URL: z.string().optional().default(''), // Slack/Mattermost incoming webhook
   METRICS_ENABLED: bool(true),
+  // Bearer token required to read GET /metrics. Optional in dev; REQUIRED in
+  // production when metrics are enabled (see config-validation) so internal
+  // queue/scan counts are never publicly scrapable.
+  METRICS_TOKEN: z.string().optional().default(''),
   AUTH_FAIL_ALERT_THRESHOLD: int(25), // 401s within the window before an alert fires
   AUTH_FAIL_ALERT_WINDOW_MS: int(60_000),
 
@@ -145,6 +149,8 @@ const secretProblems = validateProductionSecrets({
   PAYMENTS_PROVIDER: parsed.data.PAYMENTS_PROVIDER,
   STRIPE_SECRET_KEY: parsed.data.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: parsed.data.STRIPE_WEBHOOK_SECRET,
+  METRICS_ENABLED: parsed.data.METRICS_ENABLED,
+  METRICS_TOKEN: parsed.data.METRICS_TOKEN,
   ENCRYPTION_KEYS: {},
 });
 if (secretProblems.length > 0) {

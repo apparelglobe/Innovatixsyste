@@ -11,6 +11,7 @@ import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import { timingSafeEqual } from 'node:crypto';
 import { config } from './config';
 import { assertDbReachable, prisma } from './db';
 import { storage } from './storage';
@@ -97,8 +98,22 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // Prometheus metrics (restrict to the internal network / scrape token at nginx).
-  app.get('/metrics', async (_req, reply) => {
+  app.get('/metrics', async (req, reply) => {
     if (!config.METRICS_ENABLED) return reply.code(404).send();
+    // Bearer-token gate so internal queue/scan counts are never publicly scrapable.
+    // When a token is configured, it is required (timing-safe compare). In
+    // production a token is mandatory (config-validation enforces it); if somehow
+    // absent, fail closed rather than leak. Dev with no token = open (convenience).
+    const token = config.METRICS_TOKEN;
+    if (token) {
+      const auth = String(req.headers['authorization'] ?? '');
+      const presented = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      const a = Buffer.from(presented);
+      const b = Buffer.from(token);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return reply.code(401).send();
+    } else if (config.NODE_ENV === 'production') {
+      return reply.code(403).send();
+    }
     const [pendingJobs, deadJobs, pendingScans, deadScans, scanningFiles] = await Promise.all([
       prisma.sideEffectJob.count({ where: { status: 'PENDING' } }),
       prisma.sideEffectJob.count({ where: { status: 'DEAD' } }),

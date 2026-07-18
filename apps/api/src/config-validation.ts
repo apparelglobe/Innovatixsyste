@@ -49,6 +49,8 @@ export interface ProdSecretEnv {
   PAYMENTS_PROVIDER: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  METRICS_ENABLED?: boolean;
+  METRICS_TOKEN?: string;
   /** Extensible hook: symmetric-encryption keys keyed by env-var name. None used today. */
   ENCRYPTION_KEYS?: Record<string, string | undefined>;
 }
@@ -115,6 +117,11 @@ export function validateProductionSecrets(env: ProdSecretEnv): string[] {
     if ((env.STRIPE_WEBHOOK_SECRET ?? '').trim() === '') {
       errors.push('STRIPE_WEBHOOK_SECRET is required when PAYMENTS_PROVIDER=stripe.');
     }
+  }
+  // /metrics exposes internal queue/scan counts — it must not be publicly scrapable
+  // in production. Require a bearer token when metrics are enabled (or disable them).
+  if (env.METRICS_ENABLED !== false && (env.METRICS_TOKEN ?? '').trim() === '') {
+    errors.push('METRICS_TOKEN is required in production when METRICS_ENABLED is true (or set METRICS_ENABLED=false).');
   }
 
   // Encryption keys — none used today. When symmetric encryption is added,

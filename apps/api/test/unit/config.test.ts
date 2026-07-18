@@ -40,6 +40,8 @@ const validProd = (over: Partial<ProdSecretEnv> = {}): ProdSecretEnv => ({
   MALWARE_SCANNER_PROVIDER: 'clamav',
   CLAMAV_HOST: 'clamav.internal',
   CLAMAV_REQUIRED_IN_PRODUCTION: true,
+  METRICS_ENABLED: true,
+  METRICS_TOKEN: strong('metrics'),
   ENCRYPTION_KEYS: {},
   ...over,
 });
@@ -65,6 +67,15 @@ test('missing required secret is rejected', () => {
   const errs = validateProductionSecrets(validProd({ PORTAL_JWT_SECRET: '' }));
   assert.equal(errs.length, 1);
   assert.match(errs[0], /PORTAL_JWT_SECRET.*required/);
+});
+
+test('metrics enabled in production requires a METRICS_TOKEN', () => {
+  const errs = validateProductionSecrets(validProd({ METRICS_TOKEN: '' }));
+  assert.ok(errs.some((e) => /METRICS_TOKEN is required/.test(e)));
+});
+
+test('metrics disabled in production needs no token', () => {
+  assert.deepEqual(validateProductionSecrets(validProd({ METRICS_ENABLED: false, METRICS_TOKEN: '' })), []);
 });
 
 test('each required secret is checked', () => {
