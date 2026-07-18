@@ -5,6 +5,7 @@ import { Loader2, UserPlus, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { usePortal } from '@/lib/usePortal';
 import { PortalShell } from '@/components/PortalShell';
 import { apiJson } from '@/lib/portal-api';
+import { activeOwnerCount, canChangeRole, canDeactivate, isSelf } from '@/lib/team-guards';
 
 type Member = {
   id: string;
@@ -39,7 +40,7 @@ export default function SettingsPage() {
     loadMembers();
   }, [loadMembers]);
 
-  const activeOwners = (members ?? []).filter((m) => m.active && m.role === 'OWNER').length;
+  const activeOwners = activeOwnerCount(members ?? []);
 
   async function setActive(m: Member, active: boolean) {
     setError(null);
@@ -155,8 +156,9 @@ export default function SettingsPage() {
                 <div className="py-6 text-sm text-neutral-500">No team members yet.</div>
               ) : (
                 members.map((m) => {
-                  const isSelf = !!me.user.email && m.email.toLowerCase() === me.user.email.toLowerCase();
-                  const isLastActiveOwner = m.active && m.role === 'OWNER' && activeOwners <= 1;
+                  const self = isSelf(m, me.user.email);
+                  const deact = canDeactivate(m, me.user.email, activeOwners);
+                  const roleChangeable = canChangeRole(m, me.user.email);
                   const busy = busyId === m.id;
                   return (
                     <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -166,17 +168,17 @@ export default function SettingsPage() {
                           {!m.active ? (
                             <span className="rounded-full bg-neutral-700/60 px-2 py-0.5 text-[11px] font-semibold text-neutral-300">Deactivated</span>
                           ) : null}
-                          {isSelf ? <span className="text-[11px] text-neutral-500">(you)</span> : null}
+                          {self ? <span className="text-[11px] text-neutral-500">(you)</span> : null}
                         </div>
                         <div className="truncate text-xs text-neutral-500">{m.email}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <select
                           value={m.role}
-                          disabled={busy || isSelf || !m.active}
+                          disabled={busy || !roleChangeable}
                           onChange={(e) => changeRole(m, e.target.value as 'OWNER' | 'MEMBER')}
                           className="rounded-lg border border-line bg-base px-2 py-1 text-xs text-neutral-200 disabled:opacity-40"
-                          title={isSelf ? 'You cannot change your own role' : undefined}
+                          title={self ? 'You cannot change your own role' : undefined}
                         >
                           <option value="OWNER">Owner</option>
                           <option value="MEMBER">Member</option>
@@ -184,8 +186,8 @@ export default function SettingsPage() {
                         {m.active ? (
                           <button
                             onClick={() => setActive(m, false)}
-                            disabled={busy || isSelf || isLastActiveOwner}
-                            title={isSelf ? 'You cannot deactivate your own account' : isLastActiveOwner ? 'You cannot deactivate the last active owner' : undefined}
+                            disabled={busy || !deact.allowed}
+                            title={deact.reason}
                             className="rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-neutral-300 transition hover:border-red-500/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             {busy ? '…' : 'Deactivate'}

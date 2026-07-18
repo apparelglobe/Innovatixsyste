@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start -p 4030",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.mts"
   },
   "dependencies": {
     "@innovatix/ui": "*",
