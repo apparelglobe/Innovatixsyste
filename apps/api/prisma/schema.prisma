@@ -893,6 +893,7 @@ enum ActivityType {
 enum ActorType {
   SYSTEM
   ADMIN
+  CLIENT
   WEBHOOK
 }
 

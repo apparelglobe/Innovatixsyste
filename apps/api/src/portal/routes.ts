@@ -308,7 +308,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       },
     });
     await prisma.auditEvent.create({
-      data: { tenantId: inv.tenantId, entityType: 'Invoice', entityId: inv.id, action: 'PAYMENT_CHECKOUT_CREATED', actorType: 'ADMIN', actorId: ctx.session.sub, data: { provider: gateway.name, sessionId: session.sessionId } },
+      data: { tenantId: inv.tenantId, entityType: 'Invoice', entityId: inv.id, action: 'PAYMENT_CHECKOUT_CREATED', actorType: 'CLIENT', actorId: ctx.session.sub, data: { provider: gateway.name, sessionId: session.sessionId } },
     }).catch(() => undefined);
 
     return reply.send({ ok: true, url: session.url, provider: gateway.name });
@@ -333,7 +333,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     // quarantined, unscanned, non-current, deleted, or cross-org → 404 (no reveal).
     const file = await findClientVisibleFile(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id);
     if (!file?.storageKey) return reply.code(404).send({ ok: false });
-    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ProjectFile', entityId: file.id, action: 'FILE_DOWNLOADED', actorType: 'ADMIN', actorId: ctx.session.sub, data: { via: 'portal', version: file.version } } }).catch(() => undefined);
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ProjectFile', entityId: file.id, action: 'FILE_DOWNLOADED', actorType: 'CLIENT', actorId: ctx.session.sub, data: { via: 'portal', version: file.version } } }).catch(() => undefined);
     const signed = await storage().getSignedUrl(file.storageKey, config.S3_SIGNED_URL_TTL_SECONDS);
     if (signed) return reply.redirect(signed); // S3: short-lived signed URL
     reply.header('content-type', file.mimeType || 'application/octet-stream');
@@ -369,7 +369,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         data: { tenantId: ctx.session.tenant, projectId: approval.projectId, type: 'APPROVAL', message: `Approval ${approved ? 'granted' : 'sent back for changes'}: ${approval.subject}` },
       }),
       prisma.auditEvent.create({
-        data: { tenantId: ctx.session.tenant, entityType: 'Approval', entityId: approval.id, action: `APPROVAL_${body.data.decision}`, actorType: 'ADMIN', actorId: ctx.session.sub },
+        data: { tenantId: ctx.session.tenant, entityType: 'Approval', entityId: approval.id, action: `APPROVAL_${body.data.decision}`, actorType: 'CLIENT', actorId: ctx.session.sub },
       }),
       // The approval SERVICE is the only path that mutates the related object:
       // an APPROVED milestone approval marks the milestone DONE.
@@ -461,7 +461,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     const target = await prisma.clientUser.findFirst({ where: { id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { id: true } });
     if (!target) return reply.code(404).send({ ok: false });
     await prisma.clientUser.update({ where: { id: target.id }, data: { role: b.data.role } });
-    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ClientUser', entityId: target.id, action: 'CLIENT_USER_ROLE_CHANGED', actorType: 'ADMIN', actorId: ctx.session.sub, data: { role: b.data.role } } }).catch(() => undefined);
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ClientUser', entityId: target.id, action: 'CLIENT_USER_ROLE_CHANGED', actorType: 'CLIENT', actorId: ctx.session.sub, data: { role: b.data.role } } }).catch(() => undefined);
     return reply.send({ ok: true });
   });
 
@@ -481,7 +481,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       if (!contact) return reply.code(400).send({ ok: false, message: 'Billing contact must be a user in your organization.' });
     }
     await prisma.invoice.update({ where: { id: inv.id }, data: { billingContactUserId: b.data.billingContactUserId } });
-    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'Invoice', entityId: inv.id, action: 'INVOICE_BILLING_CONTACT_SET', actorType: 'ADMIN', actorId: ctx.session.sub } }).catch(() => undefined);
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'Invoice', entityId: inv.id, action: 'INVOICE_BILLING_CONTACT_SET', actorType: 'CLIENT', actorId: ctx.session.sub } }).catch(() => undefined);
     return reply.send({ ok: true });
   });
 }

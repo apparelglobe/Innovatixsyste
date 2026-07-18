@@ -43,8 +43,6 @@ export async function requireClientPermission(
   if (!clientCan(role, action)) {
     if (SENSITIVE_CLIENT_ACTIONS.has(action)) {
       // Audit sensitive denials (best-effort; never block the response).
-      // NOTE: ActorType has no CLIENT member yet, so client-initiated events are
-      // recorded as ADMIN by existing convention — tracked as a follow-up.
       await prisma.auditEvent
         .create({
           data: {
@@ -52,7 +50,7 @@ export async function requireClientPermission(
             entityType: 'ClientUser',
             entityId: session.sub,
             action: 'CLIENT_ACTION_DENIED',
-            actorType: 'ADMIN',
+            actorType: 'CLIENT',
             actorId: session.sub,
             data: { deniedAction: action, role },
           },
