@@ -16,6 +16,24 @@ Object-storage objects are **content-addressed by key** and referenced from
 `project_files`; the DB is the source of truth for *which* files exist, so DB and
 bucket must be restored to a **consistent pair** (see DR runbook step 4).
 
+## Executable scripts (run these — not just prose)
+
+Two runnable scripts implement the dump/restore flow below and are wired to
+`DATABASE_URL` (falling back to `apps/api/.env`):
+
+```bash
+scripts/backup-db.sh [OUT_DIR]        # pg_dump -Fc → backups/innovatix-<UTC>.dump (+ GFS prune, KEEP=30)
+scripts/restore-db.sh <DUMP>          # restore into a FRESH <name>_restore db, then verify
+scripts/restore-db.sh <DUMP> --drop-after   # round-trip self-test (verify, then drop)
+scripts/restore-db.sh --verify-only <DB>    # re-verify an already-restored db
+```
+
+`restore-db.sh` refuses to overwrite the source database, always restores into a
+fresh target, and runs the full verification block (table count, key-table row
+counts diffed against the live source when reachable, orphan-invoice check, and
+the Prisma migration ledger) — exiting non-zero if anything fails. The nightly
+cron/CI job below is just `backup-db.sh` plus an upload to off-account storage.
+
 ## PostgreSQL backup strategy
 
 Two layers, defense in depth:
@@ -83,11 +101,13 @@ migration/mass-delete), promote, then verify as below.
 ## Restore verification — TEST PERFORMED ✅
 
 A real dump → restore → verify cycle was executed against the dev database
-(`localhost:5544/innovatix`) on **2026-07-16**. This is not a documented intention
-— it ran.
+(`localhost:5544/innovatix`) — last re-run **2026-07-18** via the executable
+`scripts/backup-db.sh` + `scripts/restore-db.sh --drop-after`. This is not a
+documented intention — it ran, and the scripts print the table below.
 
-**Method:** fingerprint source → `pg_dump -Fc` → restore into a fresh
-`innovatix_restore_test` DB → re-fingerprint → compare → integrity checks → drop.
+**Method:** `backup-db.sh` (`pg_dump -Fc`) → `restore-db.sh` restores into a
+fresh `innovatix_restore` DB → verify (counts diffed vs. live source + integrity
++ migration ledger) → drop.
 
 **Results:**
 
@@ -107,7 +127,7 @@ A real dump → restore → verify cycle was executed against the dev database
 - `invoices → projects → tenants` join intact: tenant *Innovatix Systems* = 5
   projects / 10 invoices; second tenant = 0/0. ✅
 - Orphan invoices (invoice with no parent project): **0**. ✅
-- Migration ledger: **11** applied migrations present in `_prisma_migrations`. ✅
+- Migration ledger: **13** applied migrations present in `_prisma_migrations`. ✅
 
 **Timings** (dev dataset, 292 KB compressed dump): `pg_dump` < 0.1 s,
 `pg_restore` < 0.2 s. At production scale re-measure and record here; the

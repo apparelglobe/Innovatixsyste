@@ -14,6 +14,9 @@ out/
 .pgdata/
 .devdata/
 
+# database dumps produced by scripts/backup-db.sh (never commit backups)
+backups/
+
 # generated Prisma client
 **/generated/prisma/
 
