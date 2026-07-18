@@ -20,9 +20,12 @@ export type ClientSessionLike = { sub: string; org: string; tenant: string; emai
 export async function resolveClientRole(session: ClientSessionLike): Promise<ClientUserRole | null> {
   const user = await prisma.clientUser.findFirst({
     where: { id: session.sub, clientOrgId: session.org, tenantId: session.tenant },
-    select: { role: true },
+    select: { role: true, active: true },
   });
-  return user?.role ?? null;
+  // A deactivated account is treated as if it no longer exists — a live token
+  // gives no permissions, so deactivation takes effect immediately.
+  if (!user || !user.active) return null;
+  return user.role;
 }
 
 /**

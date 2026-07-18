@@ -70,6 +70,12 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!user || !ok) {
       return reply.code(401).send({ ok: false, message: 'Invalid email or password.' });
     }
+    // Deactivated accounts cannot sign in. Only revealed AFTER a correct password
+    // (a wrong password still returns the generic 401 above), so this never leaks
+    // account existence/status to an attacker.
+    if (!user.active) {
+      return reply.code(403).send({ ok: false, message: 'This account has been deactivated. Please contact your account owner.' });
+    }
 
     await prisma.clientUser.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     const token = signSession({ sub: user.id, org: user.clientOrgId, tenant: tenant.id, email: user.email });
@@ -412,7 +418,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     const users = await prisma.clientUser.findMany({
       where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true, lastLoginAt: true, createdAt: true },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, active: true, lastLoginAt: true, createdAt: true },
     });
     return reply.send({ ok: true, users });
   });
@@ -462,6 +468,39 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!target) return reply.code(404).send({ ok: false });
     await prisma.clientUser.update({ where: { id: target.id }, data: { role: b.data.role } });
     await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ClientUser', entityId: target.id, action: 'CLIENT_USER_ROLE_CHANGED', actorType: 'CLIENT', actorId: ctx.session.sub, data: { role: b.data.role } } }).catch(() => undefined);
+    return reply.send({ ok: true });
+  });
+
+  // Deactivate a teammate (OWNER only). A deactivated user can no longer sign in
+  // and loses portal access (their role resolves as inactive on RBAC checks).
+  // Guards: cannot deactivate yourself; cannot deactivate the LAST active owner.
+  app.post('/portal/client-users/:id/deactivate', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:deactivate'))) return;
+    const id = (req.params as { id: string }).id;
+    if (id === ctx.session.sub) return reply.code(400).send({ ok: false, message: 'You cannot deactivate your own account.' });
+    const target = await prisma.clientUser.findFirst({ where: { id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { id: true, role: true, active: true } });
+    if (!target) return reply.code(404).send({ ok: false });
+    if (target.active && target.role === 'OWNER') {
+      const otherActiveOwners = await prisma.clientUser.count({ where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, role: 'OWNER', active: true, id: { not: target.id } } });
+      if (otherActiveOwners === 0) return reply.code(400).send({ ok: false, message: 'You cannot deactivate the last active owner.' });
+    }
+    await prisma.clientUser.update({ where: { id: target.id }, data: { active: false } });
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ClientUser', entityId: target.id, action: 'CLIENT_USER_DEACTIVATED', actorType: 'CLIENT', actorId: ctx.session.sub } }).catch(() => undefined);
+    return reply.send({ ok: true });
+  });
+
+  // Reactivate a previously-deactivated teammate (OWNER only).
+  app.post('/portal/client-users/:id/reactivate', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:deactivate'))) return;
+    const id = (req.params as { id: string }).id;
+    const target = await prisma.clientUser.findFirst({ where: { id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { id: true } });
+    if (!target) return reply.code(404).send({ ok: false });
+    await prisma.clientUser.update({ where: { id: target.id }, data: { active: true } });
+    await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ClientUser', entityId: target.id, action: 'CLIENT_USER_REACTIVATED', actorType: 'CLIENT', actorId: ctx.session.sub } }).catch(() => undefined);
     return reply.send({ ok: true });
   });
 

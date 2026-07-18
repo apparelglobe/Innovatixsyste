@@ -357,6 +357,7 @@ model ClientUser {
   firstName    String?
   lastName     String?
   role         ClientUserRole @default(MEMBER)
+  active       Boolean        @default(true)
   lastLoginAt  DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
