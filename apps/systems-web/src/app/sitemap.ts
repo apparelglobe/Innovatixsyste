@@ -10,15 +10,23 @@ import { SERVICE_CATEGORIES } from '@/lib/nav';
  * are excluded so they are never surfaced to search engines.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date('2026-07-13');
+  const lastModified = new Date('2026-07-18');
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: absoluteUrl('/'), lastModified, changeFrequency: 'weekly', priority: 1 },
     { url: absoluteUrl('/services'), lastModified, changeFrequency: 'weekly', priority: 0.9 },
     { url: absoluteUrl('/case-studies'), lastModified, changeFrequency: 'monthly', priority: 0.7 },
+    { url: absoluteUrl('/company'), lastModified, changeFrequency: 'monthly', priority: 0.7 },
     { url: absoluteUrl('/company/process'), lastModified, changeFrequency: 'monthly', priority: 0.6 },
+    { url: absoluteUrl('/solutions'), lastModified, changeFrequency: 'monthly', priority: 0.8 },
+    { url: absoluteUrl('/industries'), lastModified, changeFrequency: 'monthly', priority: 0.7 },
+    { url: absoluteUrl('/technologies'), lastModified, changeFrequency: 'monthly', priority: 0.6 },
+    { url: absoluteUrl('/resources'), lastModified, changeFrequency: 'monthly', priority: 0.5 },
     { url: absoluteUrl('/contact'), lastModified, changeFrequency: 'monthly', priority: 0.7 },
     { url: absoluteUrl('/book'), lastModified, changeFrequency: 'monthly', priority: 0.8 },
+    { url: absoluteUrl('/privacy'), lastModified, changeFrequency: 'yearly', priority: 0.3 },
+    { url: absoluteUrl('/terms'), lastModified, changeFrequency: 'yearly', priority: 0.3 },
+    { url: absoluteUrl('/cookie-policy'), lastModified, changeFrequency: 'yearly', priority: 0.3 },
   ];
 
   const categoryRoutes: MetadataRoute.Sitemap = SERVICE_CATEGORIES.map((c) => ({
