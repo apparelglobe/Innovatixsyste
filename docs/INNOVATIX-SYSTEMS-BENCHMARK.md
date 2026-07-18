@@ -1,6 +1,6 @@
 # Innovatix Systems — Enterprise Software Website Benchmark & IA Blueprint
 
-**Purpose:** Before building any page, benchmark how successful *enterprise software companies* (NOT web-design agencies) structure their sites, then synthesize an IA for `innovatixsystem.com` that is more cohesive than any single one. **Benchmark, don't invent.**
+**Purpose:** Before building any page, benchmark how successful *enterprise software companies* (NOT web-design agencies) structure their sites, then synthesize an IA for `innovatixmarketing.com` that is more cohesive than any single one. **Benchmark, don't invent.**
 
 **Method:** 4 sites analyzed live in depth (BairesDev, ScienceSoft, Thoughtworks, Netguru — the four dominant archetypes), plus a wider reviewed set of 25+ firms. Each of 18 dimensions below states *what the leaders do* → *the recommendation for Innovatix* → *why*.
 
@@ -9,7 +9,7 @@
 ## A. Brand architecture decision (approved)
 
 Two separate public brands under Innovatix Group, **separate domains, SEO, and Google Ads**:
-- **Innovatix Systems** — `innovatixsystem.com` — software engineering, AI, enterprise systems, cloud, data, security, transformation, team services.
+- **Innovatix Systems** — `innovatixmarketing.com` — software engineering, AI, enterprise systems, cloud, data, security, transformation, team services.
 - **Innovatix Marketing** — separate domain — SEO, paid ads, CRO, content.
 
 *Why:* the buyer, keywords, and ad intent are completely different; co-mingling dilutes both and confuses Google's topical signals. One shared backend (`api`) and design language; two independent front-ends. This benchmark covers **Innovatix Systems only.**
@@ -132,7 +132,7 @@ Each service page: problem → approach → deliverables → tech → process �
 
 ---
 
-## D. Synthesized recommended IA for innovatixsystem.com
+## D. Synthesized recommended IA for innovatixmarketing.com
 
 ```
 Home
@@ -155,7 +155,7 @@ Ads:           /lp/{campaign}  (noindex)
 ---
 
 ## E. Impact on the master plan
-- **Two brands:** `innovatixsystem.com` (this benchmark) now; `Innovatix Marketing` = a separate later track (own repo/domain/SEO). `platform-web` + `api` remain shared across both brands.
+- **Two brands:** `innovatixmarketing.com` (this benchmark) now; `Innovatix Marketing` = a separate later track (own repo/domain/SEO). `platform-web` + `api` remain shared across both brands.
 - **Service taxonomy:** replace the earlier 15-item list with the **8-category** architecture above.
 - **Sequencing:** this benchmark is **Step 0**, complete. Task F1 (scaffold + Home + first service page) now uses this IA and the 8-category mega-menu.
 

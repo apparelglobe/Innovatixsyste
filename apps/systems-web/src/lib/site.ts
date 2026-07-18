@@ -48,7 +48,7 @@ function resolveSiteUrl(): string {
     if (enforce) {
       throw new Error(
         '[site] NEXT_PUBLIC_SITE_URL is required for production builds. ' +
-          'Set NEXT_PUBLIC_SITE_URL=https://innovatixsystem.com before building.',
+          'Set NEXT_PUBLIC_SITE_URL=https://innovatixmarketing.com before building.',
       );
     }
     return 'http://localhost:3000';
@@ -91,6 +91,19 @@ export const SITE = {
   /** Main phone line. `phone` = display, `phoneHref` = tel: (E.164). */
   phone: '(866) 754-4814',
   phoneHref: 'tel:+18667544814',
+  /** Business address (single source of truth). */
+  address: {
+    line1: '86 Lackawanna Avenue',
+    city: 'Woodland Park',
+    state: 'NJ',
+    zip: '07424',
+    country: 'US',
+    full: '86 Lackawanna Avenue, Woodland Park, NJ 07424',
+  },
+  /** Social profiles. */
+  social: {
+    facebook: 'https://www.facebook.com/profile.php?id=61592109359320',
+  },
 } as const;
 
 /** Build an absolute URL from a path, always on the canonical host. */

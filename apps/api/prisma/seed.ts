@@ -10,7 +10,7 @@ import 'dotenv/config';
 const prisma = new PrismaClient();
 const slug = process.env.INNOVATIX_DEFAULT_TENANT_SLUG || 'innovatix-systems';
 
-const DEMO_EMAIL = 'client@demo.innovatixsystem.com';
+const DEMO_EMAIL = 'client@demo.innovatixmarketing.com';
 const DEMO_PASSWORD = 'portal-demo-2026';
 
 async function seedPortal(tenantId: string) {
@@ -116,7 +116,7 @@ async function seedPortal(tenantId: string) {
   console.log(`✓ seeded portal demo: ${org.name} / Project Alpha`);
 }
 
-const STAFF_EMAIL = 'staff@innovatixsystem.com';
+const STAFF_EMAIL = 'staff@innovatixmarketing.com';
 const STAFF_PASSWORD = 'staff-demo-2026';
 
 async function seedStaff(tenantId: string) {
@@ -127,8 +127,8 @@ async function seedStaff(tenantId: string) {
     create: { tenantId, email: STAFF_EMAIL, normalizedEmail: STAFF_EMAIL, passwordHash, firstName: 'Sam', lastName: 'Admin', role: 'ADMIN' },
   });
   const engineers: [string, string, string, 'DELIVERY_LEAD' | 'ENGINEER'][] = [
-    ['lead@innovatixsystem.com', 'Ava', 'Lead', 'DELIVERY_LEAD'],
-    ['eng@innovatixsystem.com', 'Ravi', 'Eng', 'ENGINEER'],
+    ['lead@innovatixmarketing.com', 'Ava', 'Lead', 'DELIVERY_LEAD'],
+    ['eng@innovatixmarketing.com', 'Ravi', 'Eng', 'ENGINEER'],
   ];
   for (const [email, firstName, lastName, role] of engineers) {
     await prisma.staffUser.upsert({

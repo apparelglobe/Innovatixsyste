@@ -8,8 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      SITE_URL: https://innovatixsystem.com
-      NEXT_PUBLIC_SITE_URL: https://innovatixsystem.com
+      SITE_URL: https://innovatixmarketing.com
+      NEXT_PUBLIC_SITE_URL: https://innovatixmarketing.com
       # Test database — name contains "test", so the fail-closed guard allows it.
       DATABASE_URL_TEST: postgresql://innovatix:innovatix_dev_pw@localhost:5432/innovatix_test?schema=public
     services:

@@ -18,7 +18,7 @@ npm workspaces (`apps/*`, `packages/*`) + Turborepo. Local DB via `docker-compos
 |---|---|---|---|
 | `apps/api` | `api` | **Fastify 5** + Prisma 6 + zod + jsonwebtoken + bcryptjs | Backend spine: lead pipeline + client‑delivery platform. Domains: `leads/ booking/ admin/ portal/ staff/ client/ billing/ invitations/ notifications/ email/ storage/ scanning/ jobs/ observability/`. Two entrypoints: API `src/main.ts`, background `src/worker.ts`. |
 | `apps/platform-web` | `platform-web` | **Next.js 14** (App Router), :3001 | Authenticated app = **client portal + staff delivery workspace**. noindex. Auth is client‑side (backend 401 → redirect). |
-| `apps/systems-web` | `systems-web` | **Next.js 14**, :4030 | Public **marketing website** (innovatixsystem.com). SEO/QC build gate. |
+| `apps/systems-web` | `systems-web` | **Next.js 14**, :4030 | Public **marketing website** (innovatixmarketing.com). SEO/QC build gate. |
 | `packages/ui` | `@innovatix/ui` | React 18 TS (source‑exported) | Shared design system (Container, Section, Button, Card, Badge, Metric, CaseStudyCard, `cn`). |
 | `packages/config` | `@innovatix/config` | config lib | Shared Tailwind preset + base tsconfig. |
 | `packages/analytics` | `@innovatix/analytics` | React 18 TS | GA4/GTM event helpers with PII‑blocking allowlist. Used by systems‑web only. |

@@ -85,7 +85,7 @@ export function renderOgImage({ eyebrow, title, subtitle: rawSubtitle }: OgOpts)
         {/* footer */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', height: '6px', width: '160px', borderRadius: '999px', background: 'linear-gradient(90deg, #2563EB, #1D4ED8)' }} />
-          <div style={{ fontSize: '22px', color: '#64748B' }}>innovatixsystem.com</div>
+          <div style={{ fontSize: '22px', color: '#64748B' }}>innovatixmarketing.com</div>
         </div>
       </div>
     ),

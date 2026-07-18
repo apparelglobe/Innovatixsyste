@@ -27,8 +27,8 @@ const nextConfig = {
       { source: '/contact/book', destination: '/book', permanent: true },
       {
         source: '/:path*',
-        has: [{ type: 'host', value: 'www.innovatixsystem.com' }],
-        destination: 'https://innovatixsystem.com/:path*',
+        has: [{ type: 'host', value: 'www.innovatixmarketing.com' }],
+        destination: 'https://innovatixmarketing.com/:path*',
         permanent: true,
       },
     ];

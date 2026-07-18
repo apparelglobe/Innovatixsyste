@@ -38,6 +38,15 @@ export function organizationJsonLd() {
     email: SITE.email,
     telephone: SITE.phoneHref.replace('tel:', ''),
     slogan: SITE.tagline,
+    sameAs: [SITE.social.facebook],
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: SITE.address.line1,
+      addressLocality: SITE.address.city,
+      addressRegion: SITE.address.state,
+      postalCode: SITE.address.zip,
+      addressCountry: SITE.address.country,
+    },
     contactPoint: [
       {
         '@type': 'ContactPoint',

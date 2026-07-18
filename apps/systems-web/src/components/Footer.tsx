@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { Facebook } from 'lucide-react';
 import { Container } from '@innovatix/ui';
 import { SERVICE_CATEGORIES } from '@/lib/nav';
 import { SITE } from '@/lib/site';
@@ -21,6 +22,18 @@ export function Footer() {
           <p className="mt-1 text-sm text-neutral-400">
             <a href={SITE.phoneHref} className="hover:text-white">{SITE.phone}</a>
           </p>
+          <address className="mt-1 text-sm not-italic text-neutral-400">{SITE.address.full}</address>
+          <div className="mt-4 flex items-center gap-3">
+            <a
+              href={SITE.social.facebook}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Innovatix on Facebook"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 text-neutral-400 transition hover:border-primary/40 hover:text-white"
+            >
+              <Facebook size={18} />
+            </a>
+          </div>
         </div>
         {SERVICE_CATEGORIES.slice(0, 3).map((cat) => (
           <div key={cat.key}>
@@ -42,10 +55,11 @@ export function Footer() {
       <div className="border-t border-white/10">
         <Container className="flex flex-col items-center justify-between gap-3 py-6 text-xs text-neutral-500 sm:flex-row">
           <span>© {year} Innovatix Systems. All rights reserved.</span>
-          <nav className="flex gap-5" aria-label="Legal">
+          <nav className="flex flex-wrap gap-5" aria-label="Legal">
             <a href="/privacy" className="hover:text-white">Privacy</a>
             <a href="/terms" className="hover:text-white">Terms</a>
             <a href="/cookie-policy" className="hover:text-white">Cookie Policy</a>
+            <a href="/sitemap.xml" className="hover:text-white">Sitemap</a>
           </nav>
         </Container>
       </div>

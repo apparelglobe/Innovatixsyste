@@ -2,7 +2,7 @@
 
 Turborepo monorepo for Innovatix.
 
-- `apps/systems-web` — public Innovatix Systems website (Next.js, Vercel). Canonical: https://innovatixsystem.com
+- `apps/systems-web` — public Innovatix Systems website (Next.js, Vercel). Canonical: https://innovatixmarketing.com
 - `apps/platform-web` — authenticated internal + client app (Next.js)
 - `apps/api` — shared backend/data spine (placeholder → NestJS in platform stage)
 - `packages/ui` — design system (tokens + components)

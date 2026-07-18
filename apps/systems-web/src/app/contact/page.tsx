@@ -51,6 +51,7 @@ export default function ContactPage() {
             </div>
             <p className="mt-6 text-sm text-neutral-400">Or email us at <a href={`mailto:${SITE.email}`} className="text-primary-light hover:underline">{SITE.email}</a></p>
             <p className="mt-2 text-sm text-neutral-400">Prefer to call? <a href={SITE.phoneHref} className="font-semibold text-primary-light hover:underline">{SITE.phone}</a></p>
+            <address className="mt-2 text-sm not-italic text-neutral-400">{SITE.address.full}</address>
           </div>
           <div className="rounded-2xl border border-line bg-surface p-6 md:p-8">
             <LeadForm variant="contact" />

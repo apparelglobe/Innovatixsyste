@@ -3,7 +3,7 @@
 - Repo: ~/Desktop/innovatix-os · branch `main` · commit `d5ae934`
 - Build: 3/3 apps (systems-web, platform-web, api) — pass. systems-web fully static, 87.2 kB First Load JS.
 - Next.js: 14.2.35 (security-patched).
-- Verified (rendered HTML): home + service page HTTP 200; 1× H1 each; canonical + og:url on https://innovatixsystem.com; JSON-LD (Organization/Service/Breadcrumb/FAQ) valid; robots index,follow on published page; sitemap = 2 indexable pages only (QC gate working).
+- Verified (rendered HTML): home + service page HTTP 200; 1× H1 each; canonical + og:url on https://innovatixmarketing.com; JSON-LD (Organization/Service/Breadcrumb/FAQ) valid; robots index,follow on published page; sitemap = 2 indexable pages only (QC gate working).
 - SITE_URL single source; turbo passes it through build env (canonical bug found + fixed).
 
 ## Gate A/B status
