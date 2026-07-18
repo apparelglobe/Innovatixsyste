@@ -9,7 +9,7 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     // F1 baseline. Tightened (nonces) during Gate A hardening.
     value:
-      "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+      "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https://cal.com https://*.cal.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
   },
 ];
 
