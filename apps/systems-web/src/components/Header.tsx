@@ -60,7 +60,7 @@ export function Header() {
           </a>
           <a
             href={SITE.phoneHref}
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-neutral-300 transition hover:text-white"
+            className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-neutral-300 transition hover:text-white 2xl:inline-flex"
             data-cta="Call" data-cta-loc="header"
           >
             <Phone size={15} /> {SITE.phone}
