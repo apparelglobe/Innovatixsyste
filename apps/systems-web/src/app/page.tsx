@@ -1,6 +1,6 @@
 import { ArrowRight, PlayCircle, ShieldCheck, GaugeCircle, LayoutDashboard, Code2, Bot, Layers, Lock } from 'lucide-react';
 import { Container, Section, Button, Badge, Eyebrow } from '@innovatix/ui';
-import { PortalOverviewMockup, MiniDashboard } from '@/components/Mockups';
+import { MiniDashboard } from '@/components/Mockups';
 
 const TRUST = [
   { icon: <ShieldCheck size={18} />, title: 'Enterprise Grade', body: 'Secure & compliant by default' },
@@ -29,24 +29,25 @@ export default function HomePage() {
       <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-grid-faint bg-grid opacity-70" />
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
-        <Container className="relative grid items-center gap-12 py-16 md:py-20 lg:grid-cols-2">
-          <div>
-            <Badge>Enterprise Software Company</Badge>
-            <h1 className="mt-5 max-w-xl text-4xl font-extrabold leading-[1.05] tracking-tight text-neutral-900 md:text-6xl">
-              One Platform.<br />Unlimited Possibilities.<br /><span className="text-gradient">Built for Your Business.</span>
+        <Container className="relative py-20 text-center md:py-28">
+          <div className="mx-auto max-w-3xl">
+            <div className="flex justify-center"><Badge>Enterprise Software Company</Badge></div>
+            <h1 className="mt-6 text-4xl font-extrabold leading-[1.05] tracking-tight text-neutral-900 md:text-6xl">
+              One Platform. Unlimited Possibilities.{' '}
+              <span className="text-gradient">Built for Your Business.</span>
             </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-neutral-600">
+            <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-neutral-600">
               Innovatix Systems delivers custom software, AI solutions, and platforms that power operations, drive
               efficiency, and accelerate growth — all through one connected ecosystem.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
               <Button href="/book" size="lg" data-cta="Book a Consultation" data-cta-loc="hero">Book a Consultation <ArrowRight size={18} /></Button>
               <Button href="/company/process" size="lg" variant="secondary" data-cta="See how it works" data-cta-loc="hero"><PlayCircle size={18} /> See how it works</Button>
             </div>
-            <div className="mt-9 grid gap-5 sm:grid-cols-3">
+            <div className="mt-12 flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
               {TRUST.map((t) => (
-                <div key={t.title} className="flex items-start gap-2.5">
-                  <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-primary">{t.icon}</span>
+                <div key={t.title} className="flex items-center gap-2.5 text-left">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-primary">{t.icon}</span>
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-neutral-900">{t.title}</div>
                     <div className="text-xs text-neutral-500">{t.body}</div>
@@ -55,7 +56,6 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-          <div className="lg:pl-4"><PortalOverviewMockup /></div>
         </Container>
       </section>
 
