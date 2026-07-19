@@ -44,9 +44,9 @@ export function BookFlow() {
     return (
       <div>
         <ol className="mb-6 flex items-center gap-3 text-xs font-semibold">
-          <li className="flex items-center gap-1.5 text-primary-light"><span className="grid h-5 w-5 place-items-center rounded-full bg-primary text-white">1</span> Tell us about your project</li>
+          <li className="flex items-center gap-1.5 text-primary"><span className="grid h-5 w-5 place-items-center rounded-full bg-primary text-white">1</span> Tell us about your project</li>
           <span className="h-px w-6 bg-line-strong" />
-          <li className="flex items-center gap-1.5 text-neutral-500"><span className="grid h-5 w-5 place-items-center rounded-full border border-line-strong">2</span> Pick a time</li>
+          <li className="flex items-center gap-1.5 text-neutral-500"><span className="grid h-5 w-5 place-items-center rounded-full border border-neutral-300">2</span> Pick a time</li>
         </ol>
         <LeadForm variant="book" onSuccess={(email, name, leadId) => setLead({ email, name, leadId })} />
       </div>
@@ -120,10 +120,10 @@ function SlotPicker({ lead }: { lead: { email: string; name: string; leadId?: st
     return (
       <div className="rounded-xl border border-primary/30 bg-primary/5 p-6">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/15 text-primary-light"><Check size={18} /></span>
+          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/15 text-primary"><Check size={18} /></span>
           <div>
-            <p className="text-lg font-bold text-white">You&rsquo;re booked.</p>
-            <p className="mt-1 text-neutral-200">{confirmed.day} at <span className="font-semibold text-white">{confirmed.label}</span></p>
+            <p className="text-lg font-bold text-neutral-900">You&rsquo;re booked.</p>
+            <p className="mt-1 text-neutral-700">{confirmed.day} at <span className="font-semibold text-neutral-900">{confirmed.label}</span></p>
             <p className="mt-3 text-sm text-neutral-400">A confirmation is on its way to {lead.email}. We look forward to talking through your project.</p>
           </div>
         </div>
@@ -134,10 +134,10 @@ function SlotPicker({ lead }: { lead: { email: string; name: string; leadId?: st
   return (
     <div>
       <div className="mb-5 flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
-        <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/15 text-primary-light"><Check size={14} /></span>
+        <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/15 text-primary"><Check size={14} /></span>
         <div>
-          <p className="text-sm font-semibold text-white">Your details are saved.</p>
-          <p className="text-sm text-neutral-300">Pick a time that works — your consultation is linked automatically.</p>
+          <p className="text-sm font-semibold text-neutral-900">Your details are saved.</p>
+          <p className="text-sm text-neutral-600">Pick a time that works — your consultation is linked automatically.</p>
         </div>
       </div>
 
@@ -148,7 +148,7 @@ function SlotPicker({ lead }: { lead: { email: string; name: string; leadId?: st
             key={d.value}
             type="button"
             onClick={() => setDate(d.value)}
-            className={`shrink-0 rounded-lg border px-3 py-2 text-sm transition ${d.value === date ? 'border-primary bg-primary/15 font-semibold text-white' : 'border-line-strong text-neutral-300 hover:border-primary/40 hover:text-white'}`}
+            className={`shrink-0 rounded-lg border px-3 py-2 text-sm transition ${d.value === date ? 'border-primary bg-primary/15 font-semibold text-neutral-900' : 'border-neutral-300 text-neutral-600 hover:border-primary/40 hover:text-neutral-900'}`}
           >
             {d.label}
           </button>
@@ -156,7 +156,7 @@ function SlotPicker({ lead }: { lead: { email: string; name: string; leadId?: st
       </div>
 
       {/* Slots */}
-      <div className="min-h-[8rem] rounded-xl border border-line-strong bg-elevated p-4">
+      <div className="min-h-[8rem] rounded-xl border border-neutral-300 bg-white p-4">
         {loading ? (
           <div className="flex h-28 items-center justify-center text-neutral-400"><Loader2 className="mr-2 animate-spin" size={18} /> Loading times…</div>
         ) : slots.length === 0 ? (
@@ -172,7 +172,7 @@ function SlotPicker({ lead }: { lead: { email: string; name: string; leadId?: st
                 type="button"
                 disabled={booking !== null}
                 onClick={() => book(s)}
-                className={`rounded-lg border border-line-strong px-3 py-2.5 text-sm font-medium text-neutral-100 transition hover:border-primary hover:bg-primary/10 disabled:opacity-50 ${booking === s.start ? 'border-primary bg-primary/15' : ''}`}
+                className={`rounded-lg border border-neutral-300 px-3 py-2.5 text-sm font-medium text-neutral-800 transition hover:border-primary hover:bg-primary/10 disabled:opacity-50 ${booking === s.start ? 'border-primary bg-primary/15' : ''}`}
               >
                 {booking === s.start ? <Loader2 className="mx-auto animate-spin" size={16} /> : s.label}
               </button>

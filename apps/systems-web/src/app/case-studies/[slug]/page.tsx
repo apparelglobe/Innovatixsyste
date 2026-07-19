@@ -43,19 +43,19 @@ export default function CaseStudyPage({ params }: { params: Params }) {
       />
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative py-16 md:py-20">
           <nav aria-label="Breadcrumb" className="text-xs text-neutral-400">
-            <a href="/" className="hover:text-white">Home</a> <span className="text-neutral-600">/</span>{' '}
-            <a href="/case-studies" className="hover:text-white">Case Studies</a>
+            <a href="/" className="hover:text-neutral-900">Home</a> <span className="text-neutral-600">/</span>{' '}
+            <a href="/case-studies" className="hover:text-neutral-900">Case Studies</a>
           </nav>
           <div className="mt-4"><Badge>{c.industry}</Badge></div>
-          <h1 className="mt-4 max-w-4xl text-3xl font-extrabold leading-tight tracking-tight text-white md:text-5xl">{c.h1}</h1>
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-neutral-300">{c.summary}</p>
+          <h1 className="mt-4 max-w-4xl text-3xl font-extrabold leading-tight tracking-tight text-neutral-900 md:text-5xl">{c.h1}</h1>
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-neutral-600">{c.summary}</p>
           {!c.verified && (
-            <p className="mt-6 inline-flex items-center gap-2 rounded-btn border border-line bg-surface px-3.5 py-2 text-xs text-neutral-400">
-              <ShieldCheck size={14} className="text-primary-light" />
+            <p className="mt-6 inline-flex items-center gap-2 rounded-btn border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-xs text-neutral-400">
+              <ShieldCheck size={14} className="text-primary" />
               Detailed outcomes are being verified before publication — we publish only confirmed results.
             </p>
           )}
@@ -78,8 +78,8 @@ export default function CaseStudyPage({ params }: { params: Params }) {
       {/* Challenge */}
       <Section>
         <Container className="max-w-prose">
-          <h2 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">The challenge</h2>
-          <div className="mt-4 space-y-4 leading-relaxed text-neutral-300">
+          <h2 className="text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">The challenge</h2>
+          <div className="mt-4 space-y-4 leading-relaxed text-neutral-600">
             {c.challenge.map((p, i) => <p key={i}>{p}</p>)}
           </div>
         </Container>
@@ -88,8 +88,8 @@ export default function CaseStudyPage({ params }: { params: Params }) {
       {/* Approach */}
       <Section tone="surface">
         <Container className="max-w-prose">
-          <h2 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">Our approach</h2>
-          <div className="mt-4 space-y-4 leading-relaxed text-neutral-300">
+          <h2 className="text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Our approach</h2>
+          <div className="mt-4 space-y-4 leading-relaxed text-neutral-600">
             {c.approach.map((p, i) => <p key={i}>{p}</p>)}
           </div>
         </Container>
@@ -98,11 +98,11 @@ export default function CaseStudyPage({ params }: { params: Params }) {
       {/* Systems built */}
       <Section>
         <Container>
-          <h2 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">What we engineered</h2>
+          <h2 className="text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">What we engineered</h2>
           <div className="mt-8 grid gap-5 md:grid-cols-3">
             {c.systemsBuilt.map((s) => (
               <Card key={s.heading}>
-                <h3 className="text-base font-bold text-white">{s.heading}</h3>
+                <h3 className="text-base font-bold text-neutral-900">{s.heading}</h3>
                 <p className="mt-2 text-sm text-neutral-400">{s.body}</p>
               </Card>
             ))}
@@ -111,7 +111,7 @@ export default function CaseStudyPage({ params }: { params: Params }) {
             <div className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Engineered with</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {c.stack.map((t) => (
-                <span key={t} className="rounded-pill border border-line bg-surface px-3 py-1.5 text-sm font-semibold text-neutral-300">{t}</span>
+                <span key={t} className="rounded-pill border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm font-semibold text-neutral-600">{t}</span>
               ))}
             </div>
           </div>
@@ -119,12 +119,12 @@ export default function CaseStudyPage({ params }: { params: Params }) {
       </Section>
 
       {/* CTA */}
-      <section className="relative overflow-hidden border-t border-line bg-base">
+      <section className="relative overflow-hidden border-t border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative flex flex-col items-start justify-between gap-6 py-16 md:flex-row md:items-center">
           <div>
-            <h2 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">Want a system like this?</h2>
-            <p className="mt-2 text-neutral-300">Let&apos;s scope what it would take to run your operations on software built for you.</p>
+            <h2 className="text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Want a system like this?</h2>
+            <p className="mt-2 text-neutral-600">Let&apos;s scope what it would take to run your operations on software built for you.</p>
           </div>
           <Button href="/book" size="lg">Book a Consultation <ArrowRight size={18} /></Button>
         </Container>

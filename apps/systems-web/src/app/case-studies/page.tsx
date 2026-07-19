@@ -24,15 +24,15 @@ export default function CaseStudiesIndex() {
         ])}
       />
 
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative py-16 md:py-20">
           <Badge>Case Studies</Badge>
-          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-white md:text-5xl">
+          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">
             Systems we&apos;ve engineered
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-300">
-            Real platforms businesses run on. We publish <span className="text-white">verified outcomes only</span> —
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-600">
+            Real platforms businesses run on. We publish <span className="text-neutral-900">verified outcomes only</span> —
             no inflated numbers, no claimed partnerships or certifications we haven&apos;t earned.
           </p>
         </Container>
@@ -54,9 +54,9 @@ export default function CaseStudiesIndex() {
         </Container>
       </Section>
 
-      <section className="border-t border-line bg-base">
+      <section className="border-t border-neutral-200 bg-white">
         <Container className="flex flex-col items-start justify-between gap-6 py-16 md:flex-row md:items-center">
-          <h2 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">Let&apos;s build your proof.</h2>
+          <h2 className="text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Let&apos;s build your proof.</h2>
           <Button href="/book" size="lg">Book a Consultation <ArrowRight size={18} /></Button>
         </Container>
       </section>

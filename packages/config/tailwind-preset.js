@@ -41,15 +41,17 @@ module.exports = {
       },
       borderRadius: { btn: '0.625rem', card: '0.875rem', pill: '9999px' },
       boxShadow: {
-        card: '0 1px 0 rgba(255,255,255,0.03) inset, 0 12px 32px rgba(0,0,0,0.30)',
-        cta: '0 10px 30px rgba(37,99,235,0.30)',
-        pop: '0 20px 50px rgba(0,0,0,0.45)',
+        // Light-theme shadows: soft, cool-gray elevation.
+        card: '0 1px 2px rgba(16,24,40,0.04), 0 10px 28px rgba(16,24,40,0.06)',
+        cta: '0 10px 24px rgba(37,99,235,0.22)',
+        pop: '0 20px 48px rgba(16,24,40,0.14)',
       },
       backgroundImage: {
         'brand-gradient': 'linear-gradient(90deg,#2563EB,#1D4ED8)',
-        'hero-glow': 'radial-gradient(60% 55% at 50% 0%, rgba(37,99,235,0.16) 0%, rgba(10,15,28,0) 70%)',
+        // Subtle light-blue glow behind light hero sections.
+        'hero-glow': 'radial-gradient(60% 60% at 50% 0%, rgba(37,99,235,0.10) 0%, rgba(255,255,255,0) 70%)',
         'grid-faint':
-          'linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px)',
+          'linear-gradient(rgba(37,99,235,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(37,99,235,0.06) 1px, transparent 1px)',
       },
       backgroundSize: { grid: '56px 56px' },
       maxWidth: { container: '1200px', prose: '68ch' },

@@ -16,12 +16,12 @@ export function ComingSoon({
   blurb: string;
 }) {
   return (
-    <section className="relative overflow-hidden border-b border-line bg-base">
+    <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
       <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
       <Container className="relative flex min-h-[60vh] flex-col justify-center py-20">
         <Badge>{eyebrow}</Badge>
-        <h1 className="mt-5 max-w-3xl text-3xl font-extrabold tracking-tight text-white md:text-5xl">{title}</h1>
-        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-300">{blurb}</p>
+        <h1 className="mt-5 max-w-3xl text-3xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">{title}</h1>
+        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-600">{blurb}</p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Button href="/book" size="lg">Book a Consultation <ArrowRight size={18} /></Button>
           <Button href="/services" size="lg" variant="secondary">Explore Services</Button>

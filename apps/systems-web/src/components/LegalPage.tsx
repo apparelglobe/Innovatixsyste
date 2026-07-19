@@ -19,13 +19,13 @@ export function LegalPage({
 }) {
   return (
     <>
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative py-16 md:py-20">
           <p className="text-sm font-semibold uppercase tracking-wider text-primary">Legal</p>
-          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-white md:text-5xl">{title}</h1>
+          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">{title}</h1>
           <p className="mt-4 text-sm text-neutral-400">Effective date: {effectiveDate}</p>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-300">{intro}</p>
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-600">{intro}</p>
         </Container>
       </section>
 
@@ -33,12 +33,12 @@ export function LegalPage({
         <Container>
           <article
             className={
-              'max-w-3xl space-y-5 leading-relaxed text-neutral-300 ' +
-              '[&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:text-white ' +
-              '[&_h3]:mt-6 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-white ' +
+              'max-w-3xl space-y-5 leading-relaxed text-neutral-600 ' +
+              '[&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:text-neutral-900 ' +
+              '[&_h3]:mt-6 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-neutral-900 ' +
               '[&_a]:text-primary [&_a]:underline [&_a:hover]:no-underline ' +
               '[&_ul]:mt-2 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6 [&_li]:marker:text-primary/60 ' +
-              '[&_strong]:text-white'
+              '[&_strong]:text-neutral-900'
             }
           >
             {children}

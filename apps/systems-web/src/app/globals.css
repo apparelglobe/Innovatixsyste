@@ -8,13 +8,13 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  /* Dark enterprise theme — deep navy base, light slate text. */
+  /* Light enterprise theme — white base, slate text, dark headings. */
   body {
-    @apply bg-base text-neutral-300 font-sans antialiased;
+    @apply bg-white text-neutral-600 font-sans antialiased;
     overflow-x: hidden; /* guard against decorative-glow / large-type overflow */
   }
   h1, h2, h3, h4 {
-    @apply text-white;
+    @apply text-neutral-900;
     text-wrap: balance;
   }
   ::selection {

@@ -25,8 +25,8 @@ const START_OPTIONS = ['Immediately', 'Within 1 month', '1–3 months', '3–6 m
 function field(label: string, node: React.ReactNode, required = false) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-neutral-200">
-        {label}{required && <span className="text-primary-light"> *</span>}
+      <span className="mb-1.5 block text-sm font-medium text-neutral-700">
+        {label}{required && <span className="text-primary"> *</span>}
       </span>
       {node}
     </label>
@@ -34,7 +34,7 @@ function field(label: string, node: React.ReactNode, required = false) {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-line-strong bg-white/[0.03] px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-500 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30';
+  'w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3.5 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-500 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30';
 
 export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?: (email: string, name: string, leadId?: string) => void }) {
   const [state, setState] = useState<State>('idle');
@@ -113,9 +113,9 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
   if (state === 'success' && !onSuccess) {
     return (
       <div className="rounded-xl border border-primary/30 bg-primary/5 p-8 text-center">
-        <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary-light"><Check size={22} /></div>
-        <h3 className="mt-4 text-lg font-bold text-white">Your request has been received</h3>
-        <p className="mt-2 text-sm text-neutral-300">Thanks — our team will contact you shortly to discuss your project.</p>
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary"><Check size={22} /></div>
+        <h3 className="mt-4 text-lg font-bold text-neutral-900">Your request has been received</h3>
+        <p className="mt-2 text-sm text-neutral-600">Thanks — our team will contact you shortly to discuss your project.</p>
       </div>
     );
   }
@@ -172,8 +172,8 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
       )}
 
       <label className="flex items-start gap-2.5 text-sm text-neutral-400">
-        <input type="checkbox" name="consent" className="mt-0.5 h-4 w-4 rounded border-line-strong bg-transparent" />
-        <span>I agree to be contacted about my inquiry and accept the <a href="/privacy" className="text-primary-light hover:underline">privacy policy</a>.</span>
+        <input type="checkbox" name="consent" className="mt-0.5 h-4 w-4 rounded border-neutral-300 bg-transparent" />
+        <span>I agree to be contacted about my inquiry and accept the <a href="/privacy" className="text-primary hover:underline">privacy policy</a>.</span>
       </label>
 
       {state === 'error' && (
@@ -185,7 +185,7 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
       <button
         type="submit"
         disabled={state === 'submitting'}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark disabled:opacity-60 sm:w-auto"
+        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-neutral-900 shadow-cta transition-colors hover:bg-primary-dark disabled:opacity-60 sm:w-auto"
       >
         {state === 'submitting' ? <><Loader2 size={18} className="animate-spin" /> Sending…</>
           : variant === 'book' ? <>Continue to scheduling <ArrowRight size={18} /></>

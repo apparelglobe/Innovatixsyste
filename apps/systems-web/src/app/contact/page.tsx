@@ -24,36 +24,36 @@ export default function ContactPage() {
   return (
     <>
       <JsonLd data={breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Contact', path: '/contact' }])} />
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative grid gap-12 py-16 md:py-20 lg:grid-cols-2">
           <div>
             <Badge>Contact</Badge>
-            <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-white md:text-5xl">Let’s talk about your project</h1>
-            <p className="mt-5 max-w-lg text-lg leading-relaxed text-neutral-300">
+            <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">Let’s talk about your project</h1>
+            <p className="mt-5 max-w-lg text-lg leading-relaxed text-neutral-600">
               Tell us what you’re trying to build. We’ll get back to you shortly to map your goals, constraints,
               and the fastest path to value.
             </p>
             <div className="mt-8 space-y-4">
               {REASONS.map((r) => (
                 <div key={r.title} className="flex items-start gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary-light">{r.icon}</span>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary">{r.icon}</span>
                   <div>
-                    <div className="font-semibold text-white">{r.title}</div>
+                    <div className="font-semibold text-neutral-900">{r.title}</div>
                     <p className="text-sm text-neutral-400">{r.body}</p>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-8 rounded-xl border border-line bg-surface p-4">
-              <p className="text-sm text-neutral-300">Prefer to schedule a call?</p>
-              <a href="/book" className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-primary-light hover:underline">Book a consultation <ArrowRight size={14} /></a>
+            <div className="mt-8 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <p className="text-sm text-neutral-600">Prefer to schedule a call?</p>
+              <a href="/book" className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">Book a consultation <ArrowRight size={14} /></a>
             </div>
-            <p className="mt-6 text-sm text-neutral-400">Or email us at <a href={`mailto:${SITE.email}`} className="text-primary-light hover:underline">{SITE.email}</a></p>
-            <p className="mt-2 text-sm text-neutral-400">Prefer to call? <a href={SITE.phoneHref} className="font-semibold text-primary-light hover:underline">{SITE.phone}</a></p>
+            <p className="mt-6 text-sm text-neutral-400">Or email us at <a href={`mailto:${SITE.email}`} className="text-primary hover:underline">{SITE.email}</a></p>
+            <p className="mt-2 text-sm text-neutral-400">Prefer to call? <a href={SITE.phoneHref} className="font-semibold text-primary hover:underline">{SITE.phone}</a></p>
             <address className="mt-2 text-sm not-italic text-neutral-400">{SITE.address.full}</address>
           </div>
-          <div className="rounded-2xl border border-line bg-surface p-6 md:p-8">
+          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6 md:p-8">
             <LeadForm variant="contact" />
           </div>
         </Container>

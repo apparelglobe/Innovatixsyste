@@ -44,13 +44,13 @@ export default function ArticlePage({ params }: { params: Params }) {
       <JsonLd data={articleJsonLd} />
       <JsonLd data={breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Resources', path: '/resources' }, { name: a.title, path: `/resources/${a.slug}` }])} />
 
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative py-16 md:py-20">
-          <a href="/resources" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-light hover:underline">
+          <a href="/resources" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
             <ArrowLeft size={14} /> Resources
           </a>
-          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-white md:text-5xl">{a.title}</h1>
+          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">{a.title}</h1>
           <p className="mt-4 text-sm text-neutral-500">{fmtDate(a.date)} · {a.readMinutes} min read</p>
         </Container>
       </section>
@@ -59,14 +59,14 @@ export default function ArticlePage({ params }: { params: Params }) {
         <Container>
           <article
             className={
-              'max-w-3xl space-y-5 leading-relaxed text-neutral-300 ' +
-              '[&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:text-white ' +
+              'max-w-3xl space-y-5 leading-relaxed text-neutral-600 ' +
+              '[&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:text-neutral-900 ' +
               '[&_a]:text-primary [&_a]:underline [&_a:hover]:no-underline ' +
               '[&_ul]:mt-2 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6 [&_li]:marker:text-primary/60'
             }
           >
             {a.intro.map((p, i) => (
-              <p key={`intro-${i}`} className="text-lg text-neutral-200">{p}</p>
+              <p key={`intro-${i}`} className="text-lg text-neutral-700">{p}</p>
             ))}
             {a.sections.map((s) => (
               <div key={s.heading}>
@@ -85,12 +85,12 @@ export default function ArticlePage({ params }: { params: Params }) {
             ))}
           </article>
 
-          <div className="mt-12 max-w-3xl border-t border-line pt-8">
+          <div className="mt-12 max-w-3xl border-t border-neutral-200 pt-8">
             <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Related services</div>
             <ul className="mt-3 flex flex-wrap gap-3">
               {a.internalLinks.map((l) => (
                 <li key={l.href}>
-                  <a href={l.href} className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-neutral-300 transition hover:border-primary/40 hover:text-white">
+                  <a href={l.href} className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-600 transition hover:border-primary/40 hover:text-neutral-900">
                     {l.label}
                   </a>
                 </li>

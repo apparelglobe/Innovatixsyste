@@ -30,14 +30,14 @@ export default function Page() {
     <>
       <JsonLd data={breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Resources', path: '/resources' }])} />
 
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative py-16 md:py-20">
           <Badge>Resources</Badge>
-          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-white md:text-5xl">
+          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">
             Perspective on enterprise software & AI
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-300">
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-600">
             Practical writing on building the systems businesses run on — from AI automation to modernization to
             delivering software transparently. Our library is growing; here is what we cover.
           </p>
@@ -50,13 +50,13 @@ export default function Page() {
       <Section>
         <Container>
           <Eyebrow>Latest articles</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">Articles</h2>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Articles</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {articleList().map((a) => (
               <a key={a.slug} href={`/resources/${a.slug}`} className="group">
                 <Card className="flex h-full flex-col transition-colors group-hover:border-primary/50">
                   <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{fmtDate(a.date)} · {a.readMinutes} min read</div>
-                  <h3 className="mt-2 text-base font-bold text-white">{a.title}</h3>
+                  <h3 className="mt-2 text-base font-bold text-neutral-900">{a.title}</h3>
                   <p className="mt-2 flex-1 text-sm leading-relaxed text-neutral-400">{a.description}</p>
                   <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">
                     Read <ArrowRight size={14} />
@@ -68,14 +68,14 @@ export default function Page() {
         </Container>
       </Section>
 
-      <Section tone="surface" className="border-y border-line">
+      <Section tone="surface" className="border-y border-neutral-200">
         <Container>
           <Eyebrow>What we write about</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">Topics we cover</h2>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Topics we cover</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {TOPICS.map((t) => (
               <Card key={t.name}>
-                <h3 className="text-base font-bold text-white">{t.name}</h3>
+                <h3 className="text-base font-bold text-neutral-900">{t.name}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-neutral-400">{t.body}</p>
               </Card>
             ))}
@@ -83,13 +83,13 @@ export default function Page() {
         </Container>
       </Section>
 
-      <Section tone="gradient" className="border-y border-line">
+      <Section tone="gradient" className="border-y border-neutral-200">
         <Container className="max-w-3xl">
           <Eyebrow>Prefer to talk it through?</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">
             Bring us the problem you’re trying to solve
           </h2>
-          <p className="mt-4 leading-relaxed text-neutral-300">
+          <p className="mt-4 leading-relaxed text-neutral-600">
             The fastest way to useful answers is a conversation about your specific operations. Tell us where the
             friction is and we’ll tell you, honestly, whether and how software can help.
           </p>

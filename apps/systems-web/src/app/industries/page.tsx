@@ -26,14 +26,14 @@ export default function Page() {
     <>
       <JsonLd data={breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Industries', path: '/industries' }])} />
 
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative py-16 md:py-20">
           <Badge>Industries</Badge>
-          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-white md:text-5xl">
+          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">
             Enterprise software engineered for your industry
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-300">
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-600">
             We build custom software, not packaged products — so the system fits how your industry actually operates.
             Here are the sectors where our engineering, AI, and enterprise-systems work is a natural fit.
           </p>
@@ -46,11 +46,11 @@ export default function Page() {
       <Section>
         <Container>
           <Eyebrow>Where we build</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">Industries we serve</h2>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Industries we serve</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {INDUSTRIES.map((i) => (
               <Card key={i.name}>
-                <h3 className="text-base font-bold text-white">{i.name}</h3>
+                <h3 className="text-base font-bold text-neutral-900">{i.name}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-neutral-400">{i.body}</p>
               </Card>
             ))}
@@ -63,13 +63,13 @@ export default function Page() {
         </Container>
       </Section>
 
-      <Section tone="gradient" className="border-y border-line">
+      <Section tone="gradient" className="border-y border-neutral-200">
         <Container className="max-w-3xl">
           <Eyebrow>Our approach</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">
             Industry fit comes from understanding your operations
           </h2>
-          <p className="mt-4 leading-relaxed text-neutral-300">
+          <p className="mt-4 leading-relaxed text-neutral-600">
             We start every engagement with discovery — mapping your goals, constraints, systems, and how work actually
             flows — before we design or build anything. That is what makes the software fit, whatever the industry.{' '}
             <a href="/company/process" className="text-primary underline hover:no-underline">See our delivery process</a>.

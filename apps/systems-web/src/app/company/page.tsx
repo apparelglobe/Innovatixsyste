@@ -34,14 +34,14 @@ export default function Page() {
       <JsonLd data={breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Company', path: '/company' }])} />
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative py-16 md:py-20">
           <Badge>Company</Badge>
-          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-white md:text-5xl">
+          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">
             We build the systems businesses run on
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-300">
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-neutral-600">
             Innovatix Systems is an enterprise software company. We engineer custom platforms, enterprise systems, and AI
             automation — and we deliver them with full transparency, so you always know exactly where your project
             stands.
@@ -57,15 +57,15 @@ export default function Page() {
       <Section>
         <Container className="max-w-3xl">
           <Eyebrow>What we’re about</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">
             Enterprise software, engineered to run your business as one system
           </h2>
-          <p className="mt-4 leading-relaxed text-neutral-300">
+          <p className="mt-4 leading-relaxed text-neutral-600">
             Most growing businesses end up stitched together from tools that were never meant to work as one — orders in
             one place, inventory in another, finance in a third. We build the connected software that replaces that
             fragmentation with a single operational source of truth, tailored to how your business actually works.
           </p>
-          <p className="mt-4 leading-relaxed text-neutral-300">
+          <p className="mt-4 leading-relaxed text-neutral-600">
             And we do it in the open. A connected client portal gives you live progress, verified reports, milestone
             approvals, and every contract and invoice in one place — because you deserve to see the work, not just the
             demo.
@@ -74,14 +74,14 @@ export default function Page() {
       </Section>
 
       {/* Principles */}
-      <Section tone="gradient" className="border-y border-line">
+      <Section tone="gradient" className="border-y border-neutral-200">
         <Container>
           <Eyebrow>How we work</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">Principles we build by</h2>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Principles we build by</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {PRINCIPLES.map((p) => (
               <Card key={p.name}>
-                <h3 className="text-base font-bold text-white">{p.name}</h3>
+                <h3 className="text-base font-bold text-neutral-900">{p.name}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-neutral-400">{p.body}</p>
               </Card>
             ))}
@@ -93,12 +93,12 @@ export default function Page() {
       <Section>
         <Container>
           <Eyebrow>What we do</Eyebrow>
-          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-white md:text-3xl">Four areas, one connected system</h2>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-neutral-900 md:text-3xl">Four areas, one connected system</h2>
           <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
             {WHAT_WE_DO.map((s) => (
               <a key={s.name} href={s.href} className="group">
                 <Card className="h-full transition-colors group-hover:border-primary/50">
-                  <h3 className="text-base font-bold text-white">{s.name}</h3>
+                  <h3 className="text-base font-bold text-neutral-900">{s.name}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-neutral-400">{s.body}</p>
                   <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">
                     Explore <ArrowRight size={14} />

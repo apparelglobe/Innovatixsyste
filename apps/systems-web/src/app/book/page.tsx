@@ -24,27 +24,27 @@ export default function BookPage() {
   return (
     <>
       <JsonLd data={breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Book a Consultation', path: '/book' }])} />
-      <section className="relative overflow-hidden border-b border-line bg-base">
+      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
         <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
         <Container className="relative grid gap-12 py-16 md:py-20 lg:grid-cols-2">
           <div>
             <Badge>Book a consultation</Badge>
-            <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+            <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-neutral-900 md:text-5xl">
               Scope your system with our team
             </h1>
-            <p className="mt-5 max-w-lg text-lg leading-relaxed text-neutral-300">
+            <p className="mt-5 max-w-lg text-lg leading-relaxed text-neutral-600">
               Share a little context first so the conversation is productive — then pick a time that works for you.
             </p>
-            <ul className="mt-8 space-y-3 text-sm text-neutral-200">
+            <ul className="mt-8 space-y-3 text-sm text-neutral-700">
               {EXPECT.map((e) => (
                 <li key={e} className="flex items-start gap-2.5">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/15 text-primary-light"><Check size={12} /></span>
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/15 text-primary"><Check size={12} /></span>
                   {e}
                 </li>
               ))}
             </ul>
           </div>
-          <div className="rounded-2xl border border-line bg-surface p-6 md:p-8">
+          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6 md:p-8">
             <BookFlow />
           </div>
         </Container>
