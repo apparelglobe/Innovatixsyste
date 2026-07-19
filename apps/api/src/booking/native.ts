@@ -7,6 +7,7 @@
  */
 import type { PrismaClient, Tenant } from '@prisma/client';
 import { config } from '../config';
+import { normalizeEmail } from '../lib/sanitize';
 import { generateSlots, slotConfigFrom, zonedWallTimeToUtc, localTimeLabel, isValidDateStr, type Slot } from './slots';
 
 export class SlotUnavailableError extends Error {
@@ -58,11 +59,15 @@ function localDateOf(instant: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: config.BOOKING_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
 }
 
-export type ScheduleInput = { leadId: string; start: string; email?: string; name?: string };
+export type ScheduleInput = { email: string; start: string; name?: string; leadId?: string };
 export type ScheduleResult = { meetingId: string; scheduledAt: string; endsAt: string; label: string; meetingUrl: string | null };
 
 export async function scheduleNativeMeeting(prisma: PrismaClient, tenant: Tenant, input: ScheduleInput): Promise<ScheduleResult> {
-  const lead = await prisma.lead.findFirst({ where: { id: input.leadId, tenantId: tenant.id } });
+  // Resolve the lead by email (the (tenant, email) dedup identity) — the public
+  // /leads response returns an inquiry reference, not the internal lead id.
+  const lead = await prisma.lead.findUnique({
+    where: { tenantId_normalizedEmail: { tenantId: tenant.id, normalizedEmail: normalizeEmail(input.email) } },
+  });
   if (!lead) throw new LeadNotFoundError();
 
   const start = new Date(input.start);

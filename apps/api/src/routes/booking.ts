@@ -14,10 +14,10 @@ import { isValidDateStr } from '../booking/slots';
 import { config } from '../config';
 
 const scheduleSchema = z.object({
-  leadId: z.string().trim().min(1).max(120),
+  email: z.string().trim().toLowerCase().email().max(320),
   start: z.string().trim().datetime(), // ISO 8601 UTC
-  email: z.string().trim().email().max(320).optional(),
   name: z.string().trim().max(200).optional(),
+  leadId: z.string().trim().max(120).optional(),
 });
 
 export async function registerBookingRoutes(app: FastifyInstance): Promise<void> {
