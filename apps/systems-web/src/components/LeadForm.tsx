@@ -36,7 +36,7 @@ function field(label: string, node: React.ReactNode, required = false) {
 const inputCls =
   'w-full rounded-lg border border-line-strong bg-white/[0.03] px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-500 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30';
 
-export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?: (email: string, name: string) => void }) {
+export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?: (email: string, name: string, leadId?: string) => void }) {
   const [state, setState] = useState<State>('idle');
   const mountedAt = useRef(Date.now());
   // Stable idempotency key per form instance (retries/double-clicks reuse it).
@@ -103,7 +103,7 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
       setState('success');
       if (variant === 'book') analytics.bookingCompleted({ reference: data.reference });
       else analytics.contactFormSuccess({ form: variant, reference: data.reference });
-      onSuccess?.(email, firstName);
+      onSuccess?.(email, firstName, data.reference);
     } catch (err) {
       setState('error');
       analytics.contactFormError({ form: variant, code: err instanceof Error ? err.message : 'error' });

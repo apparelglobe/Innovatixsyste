@@ -51,6 +51,22 @@ const schema = z.object({
   CALCOM_WEBHOOK_SECRET: z.string().optional().default(''),
   CALCOM_EVENT_URL: z.string().default('https://cal.com/innovatix/consultation'),
 
+  // Native scheduler (self-hosted; no third-party calendar). Availability is
+  // config-driven: business hours in BOOKING_TIMEZONE, on BOOKING_WEEKDAYS
+  // (0=Sun..6=Sat), split into BOOKING_SLOT_MINUTES slots. Bookings are stored
+  // as Meeting rows (provider="native"); the unique (provider,providerBookingId)
+  // constraint prevents two people taking the same slot.
+  BOOKING_TIMEZONE: z.string().default('America/New_York'),
+  BOOKING_WEEKDAYS: z.string().default('1,2,3,4,5'),
+  BOOKING_START_HOUR: int(9),
+  BOOKING_END_HOUR: int(17),
+  BOOKING_SLOT_MINUTES: int(30),
+  BOOKING_MIN_NOTICE_HOURS: int(12),
+  BOOKING_MAX_DAYS_AHEAD: int(21),
+  // Optional static meeting link (Google Meet/Zoom room). If empty, staff send
+  // the joining details after the lead is reviewed.
+  BOOKING_MEETING_URL: z.string().optional().default(''),
+
   // File storage (client portal)
   STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('.filestore'),
