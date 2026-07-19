@@ -52,6 +52,13 @@ export function Header() {
 
         <div className="hidden shrink-0 items-center gap-3 xl:flex">
           <a
+            href={SITE.portalUrl}
+            className="inline-flex shrink-0 items-center whitespace-nowrap text-sm font-semibold text-neutral-300 transition hover:text-white"
+            data-cta="Client Login" data-cta-loc="header"
+          >
+            Client Login
+          </a>
+          <a
             href={SITE.phoneHref}
             className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-neutral-300 transition hover:text-white"
             data-cta="Call" data-cta-loc="header"
@@ -135,6 +142,13 @@ export function Header() {
               ))}
             </nav>
             <Button href="/book" className="w-full" data-cta="Book a Consultation" data-cta-loc="header-mobile">Book a Consultation</Button>
+            <a
+              href={SITE.portalUrl}
+              className="flex items-center justify-center gap-1.5 rounded-btn border border-line py-2 text-sm font-semibold text-neutral-200"
+              data-cta="Client Login" data-cta-loc="header-mobile"
+            >
+              Client Login
+            </a>
             <a
               href={SITE.phoneHref}
               className="flex items-center justify-center gap-1.5 rounded-btn border border-line py-2 text-sm font-semibold text-neutral-200"

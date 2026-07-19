@@ -64,6 +64,7 @@ export function Footer() {
         <Container className="flex flex-col items-center justify-between gap-3 py-6 text-xs text-neutral-500 sm:flex-row">
           <span>© {year} Innovatix Systems. All rights reserved.</span>
           <nav className="flex flex-wrap gap-5" aria-label="Legal">
+            <a href={SITE.portalUrl} className="font-semibold text-neutral-300 hover:text-white">Client Login</a>
             <a href="/privacy" className="hover:text-white">Privacy</a>
             <a href="/terms" className="hover:text-white">Terms</a>
             <a href="/cookie-policy" className="hover:text-white">Cookie Policy</a>

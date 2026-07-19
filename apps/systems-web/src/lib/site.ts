@@ -91,6 +91,8 @@ export const SITE = {
   /** Main phone line. `phone` = display, `phoneHref` = tel: (E.164). */
   phone: '(866) 754-4814',
   phoneHref: 'tel:+18667544814',
+  /** Client project portal sign-in (separate app on the app.* subdomain). */
+  portalUrl: 'https://app.innovatixmarketing.com/clientportal',
   /** Business address (single source of truth). */
   address: {
     line1: '86 Lackawanna Avenue',
