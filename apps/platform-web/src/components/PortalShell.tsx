@@ -27,7 +27,7 @@ export function PortalShell({
 
   async function logout() {
     await api('/portal/auth/logout', { method: 'POST' });
-    router.replace('/login');
+    router.replace('/clientportal');
   }
 
   return (

@@ -43,7 +43,7 @@ export async function registerInvitationRoutes(app: FastifyInstance): Promise<vo
   });
 
   // Accept an invitation: set the account password. On success the client
-  // redirects to /login — no session is issued here.
+  // redirects to /clientportal — no session is issued here.
   app.post('/auth/invitations/:token/accept', { logLevel: 'warn' }, async (req, reply) => {
     const tenant = await resolveDefaultTenant(prisma);
     const rl = await checkRateLimit(prisma, tenant.id, `invite-accept:${hashAbuseIdentifier(req.ip)}`, new Date(), 10);
@@ -54,7 +54,7 @@ export async function registerInvitationRoutes(app: FastifyInstance): Promise<vo
     if (!p.success || !b.success) return reply.code(400).send({ ok: false, code: 'INVALID', message: 'Invalid request.' });
 
     const r = await acceptInvitation(prisma, p.data.token, b.data.password);
-    if (r.ok) return reply.send({ ok: true, redirect: '/login', existing: r.existing });
+    if (r.ok) return reply.send({ ok: true, redirect: '/clientportal', existing: r.existing });
 
     switch (r.code) {
       case 'WEAK_PASSWORD':

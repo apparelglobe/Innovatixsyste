@@ -24,7 +24,7 @@ export function usePortal() {
 
   const load = useCallback(async () => {
     const meRes = await apiJson<{ user?: Me['user']; org?: Me['org'] }>('/portal/me');
-    if (meRes.status === 401) { router.replace('/login'); return; }
+    if (meRes.status === 401) { router.replace('/clientportal'); return; }
     setMe({ user: meRes.body.user || {}, org: meRes.body.org || { name: '' } });
     const pr = await apiJson<{ project: Project | null }>('/portal/project');
     setProject(pr.body.project);

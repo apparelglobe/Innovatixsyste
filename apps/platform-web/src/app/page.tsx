@@ -32,7 +32,7 @@ export default function OverviewPage() {
 
   const load = useCallback(async () => {
     const meRes = await apiJson<{ ok: boolean; user?: { firstName?: string; lastName?: string; role?: string }; org?: { name: string } }>('/portal/me');
-    if (meRes.status === 401) { router.replace('/login'); return; }
+    if (meRes.status === 401) { router.replace('/clientportal'); return; }
     setMe({ user: meRes.body.user || {}, org: meRes.body.org || { name: '' } });
     const ov = await apiJson<Overview>('/portal/overview');
     setData(ov.body);

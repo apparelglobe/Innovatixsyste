@@ -23,7 +23,7 @@ export default function PayPage() {
 
   useEffect(() => {
     apiJson<{ ok: boolean; invoice: Invoice }>(`/portal/invoices/${id}`).then((r) => {
-      if (r.status === 401) { router.replace('/login'); return; }
+      if (r.status === 401) { router.replace('/clientportal'); return; }
       setInv(r.status === 200 ? r.body.invoice : null);
     });
     // Only account OWNERs may pay — the button is gated (and the backend enforces it).

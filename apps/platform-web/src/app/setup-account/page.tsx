@@ -37,7 +37,7 @@ function Notice({ tone, icon, title, body }: { tone: 'bad' | 'ok'; icon: React.R
           <p className="mt-1 text-sm opacity-90">{body}</p>
         </div>
       </div>
-      <a href="/login" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
+      <a href="/clientportal" className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
         Go to sign in <ArrowRight size={18} />
       </a>
     </div>
@@ -88,7 +88,7 @@ function SetupInner() {
     setSubmitting(false);
     if (res.ok && body?.ok) {
       setDone(true);
-      setTimeout(() => router.replace('/login'), 1800);
+      setTimeout(() => router.replace('/clientportal'), 1800);
       return;
     }
     setFormError(body?.message || 'We could not complete setup. The link may have expired — ask your Innovatix contact to resend it.');
