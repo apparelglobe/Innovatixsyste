@@ -30,12 +30,12 @@ export function Header() {
           </span>
         </a>
 
-        {/* Desktop nav */}
-        <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">
+        {/* Desktop nav — full row only when there is room (xl+); smaller screens use the drawer. */}
+        <nav className="hidden items-center gap-0.5 xl:flex" aria-label="Primary">
           <div className="relative">
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-btn px-3 py-2 text-sm font-semibold text-neutral-300 transition hover:text-white"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-btn px-2.5 py-2 text-sm font-semibold text-neutral-300 transition hover:text-white"
               aria-expanded={megaOpen}
               onMouseEnter={() => setMegaOpen(true)}
               onClick={() => setMegaOpen((v) => !v)}
@@ -44,27 +44,27 @@ export function Header() {
             </button>
           </div>
           {PRIMARY_NAV.filter((n) => !('mega' in n && n.mega)).map((n) => (
-            <a key={n.href} href={n.href} className="rounded-btn px-3 py-2 text-sm font-semibold text-neutral-300 transition hover:text-white">
+            <a key={n.href} href={n.href} className="whitespace-nowrap rounded-btn px-2.5 py-2 text-sm font-semibold text-neutral-300 transition hover:text-white">
               {n.label}
             </a>
           ))}
         </nav>
 
-        <div className="hidden items-center gap-3 lg:flex">
+        <div className="hidden shrink-0 items-center gap-3 xl:flex">
           <a
             href={SITE.phoneHref}
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-300 transition hover:text-white"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-neutral-300 transition hover:text-white"
             data-cta="Call" data-cta-loc="header"
           >
             <Phone size={15} /> {SITE.phone}
           </a>
-          <Button href="/book" size="md" data-cta="Book a Consultation" data-cta-loc="header">Book a Consultation</Button>
+          <Button href="/book" size="md" className="whitespace-nowrap" data-cta="Book a Consultation" data-cta-loc="header">Book a Consultation</Button>
         </div>
 
         {/* Mobile toggle */}
         <button
           type="button"
-          className="inline-flex items-center justify-center rounded-btn p-2 text-neutral-300 lg:hidden"
+          className="inline-flex items-center justify-center rounded-btn p-2 text-neutral-300 xl:hidden"
           aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={mobileOpen}
           onClick={() => setMobileOpen((v) => !v)}
@@ -76,7 +76,7 @@ export function Header() {
       {/* Desktop mega-menu panel */}
       {megaOpen && (
         <div
-          className="absolute inset-x-0 hidden border-b border-line bg-elevated shadow-pop lg:block"
+          className="absolute inset-x-0 hidden border-b border-line bg-elevated shadow-pop xl:block"
           onMouseEnter={() => setMegaOpen(true)}
           onMouseLeave={() => setMegaOpen(false)}
         >
@@ -106,7 +106,7 @@ export function Header() {
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="border-t border-line bg-base lg:hidden">
+        <div className="border-t border-line bg-base xl:hidden">
           <Container className="space-y-4 py-4">
             <div>
               <div className="mb-2 text-xs font-bold uppercase tracking-wider text-neutral-500">Services</div>
