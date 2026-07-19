@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, ArrowRight, CheckCircle2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { api, apiJson } from '@/lib/portal-api';
+import { Logo } from '@/components/Logo';
 
 type TerminalStatus = 'EXPIRED' | 'REVOKED' | 'ACCEPTED' | 'INVALID';
 type Inspect =
@@ -15,9 +16,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="grid min-h-screen place-items-center bg-base px-6">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center justify-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-btn bg-brand-gradient text-sm font-black text-white">iX</span>
-          <span className="text-lg font-extrabold tracking-tight text-white">Innovatix <span className="text-primary-light">Portal</span></span>
+        <div className="mb-8 flex items-center justify-center">
+          <Logo className="h-9 w-auto sm:h-10" priority />
         </div>
         <div className="rounded-2xl border border-line bg-surface p-6 shadow-card">{children}</div>
         <p className="mt-6 text-center text-xs text-neutral-500">Innovatix Systems · secure client portal</p>

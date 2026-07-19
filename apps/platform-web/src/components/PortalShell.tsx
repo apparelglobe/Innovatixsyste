@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { Logo } from './Logo';
 import {
   LayoutGrid, Flag, FileText, Files, Receipt, MessageSquare, Users, Settings, LogOut,
 } from 'lucide-react';
@@ -32,9 +33,8 @@ export function PortalShell({
   return (
     <div className="flex min-h-screen bg-base">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
-        <div className="flex items-center gap-2 px-5 py-5">
-          <span className="grid h-8 w-8 place-items-center rounded-btn bg-brand-gradient text-xs font-black text-white">iX</span>
-          <span className="text-sm font-extrabold tracking-tight text-white">Innovatix <span className="text-primary-light">Portal</span></span>
+        <div className="flex items-center px-5 py-5">
+          <Logo className="h-7 w-auto" />
         </div>
         <nav className="flex-1 space-y-0.5 px-3 py-2">
           {NAV.map((n) => (

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/portal-api';
+import { Logo } from '@/components/Logo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,9 +25,8 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-base px-6">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center justify-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-btn bg-brand-gradient text-sm font-black text-white">iX</span>
-          <span className="text-lg font-extrabold tracking-tight text-white">Innovatix <span className="text-primary-light">Portal</span></span>
+        <div className="mb-8 flex items-center justify-center">
+          <Logo className="h-9 w-auto sm:h-10" priority />
         </div>
         <div className="rounded-2xl border border-line bg-surface p-6 shadow-card">
           <h1 className="text-lg font-bold text-white">Sign in to your portal</h1>

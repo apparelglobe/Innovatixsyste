@@ -10,9 +10,17 @@ export function Footer() {
     <footer className="bg-ink text-neutral-300">
       <Container className="grid gap-10 py-16 md:grid-cols-5">
         <div className="md:col-span-2">
-          <div className="flex items-center">
+          <div className="flex shrink-0 items-center">
             <span className="inline-flex items-center rounded-lg bg-white px-2.5 py-1.5">
-              <Image src="/innovatix-logo.png" alt="Innovatix" width={480} height={191} className="h-8 w-auto" />
+              {/* Natural aspect ratio (480×191) preserved: fixed responsive height + w-auto. */}
+              <Image
+                src="/innovatix-logo.png"
+                alt="Innovatix Marketing"
+                width={480}
+                height={191}
+                sizes="(max-width: 640px) 180px, 220px"
+                className="h-8 w-auto object-contain sm:h-9 md:h-10"
+              />
             </span>
           </div>
           <p className="mt-3 max-w-sm text-sm text-neutral-400">{SITE.tagline}</p>

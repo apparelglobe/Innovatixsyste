@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { FolderKanban, UserPlus, Bell, Settings, LogOut } from 'lucide-react';
 import { api } from '@/lib/portal-api';
 import { NotificationBell } from './NotificationBell';
+import { Logo } from './Logo';
 
 const NAV = [
   { key: 'projects', icon: <FolderKanban size={16} />, label: 'Projects', href: '/admin' },
@@ -25,11 +26,8 @@ export function AdminShell({
     <div className="flex min-h-screen bg-base">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
         <div className="flex items-center gap-2 px-5 py-5">
-          <span className="grid h-8 w-8 place-items-center rounded-btn bg-brand-gradient text-xs font-black text-white">iX</span>
-          <div className="leading-tight">
-            <div className="text-sm font-extrabold tracking-tight text-white">Innovatix</div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-primary-light">Delivery OS</div>
-          </div>
+          <Logo className="h-7 w-auto" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-primary-light">Delivery OS</span>
         </div>
         <nav className="flex-1 space-y-0.5 px-3 py-2">
           {NAV.map((n) => (

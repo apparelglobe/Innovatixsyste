@@ -15,9 +15,18 @@ export function Header() {
     <header className="sticky top-0 z-50 border-b border-line bg-base/80 backdrop-blur-md">
       <Container className="flex h-16 items-center justify-between gap-4">
         {/* Logo */}
-        <a href="/" className="flex items-center" aria-label="Innovatix home">
-          <span className="inline-flex items-center rounded-lg bg-white px-2.5 py-1.5">
-            <Image src="/innovatix-logo.png" alt="Innovatix" width={480} height={191} priority className="h-7 w-auto" />
+        <a href="/" className="flex shrink-0 items-center" aria-label="Innovatix home">
+          <span className="inline-flex items-center rounded-lg bg-white px-2.5 py-1">
+            {/* Natural aspect ratio (480×191) preserved: fixed responsive height + w-auto, never both forced. */}
+            <Image
+              src="/innovatix-logo.png"
+              alt="Innovatix Marketing"
+              width={480}
+              height={191}
+              priority
+              sizes="(max-width: 640px) 160px, 220px"
+              className="h-8 w-auto object-contain sm:h-9 md:h-10 lg:h-11"
+            />
           </span>
         </a>
 
