@@ -58,9 +58,9 @@ const schema = z.object({
   // constraint prevents two people taking the same slot.
   BOOKING_TIMEZONE: z.string().default('America/New_York'),
   BOOKING_WEEKDAYS: z.string().default('1,2,3,4,5'),
-  BOOKING_START_HOUR: int(9),
+  BOOKING_START_HOUR: int(11),
   BOOKING_END_HOUR: int(17),
-  BOOKING_SLOT_MINUTES: int(30),
+  BOOKING_SLOT_MINUTES: int(60),
   BOOKING_MIN_NOTICE_HOURS: int(12),
   BOOKING_MAX_DAYS_AHEAD: int(21),
   // Optional static meeting link (Google Meet/Zoom room). If empty, staff send
