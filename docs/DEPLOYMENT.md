@@ -1,12 +1,55 @@
 # Innovatix — Deployment & Production Configuration
 
-Living deployment doc. This section covers **secret configuration and the
-production fail-fast guard**; other sections (hosting, migrations, monitoring)
-are added as those hardening tasks land.
+Living deployment doc: **hosting + how to ship**, then secret configuration and
+the production fail-fast guard.
 
-> Status: local-only development. Nothing is deployed yet. Do **not** run
-> production migrations or provision infra from this doc until a release is
-> approved.
+> Status (2026-08-11): **LIVE in production.** innovatixmarketing.com (marketing),
+> app.innovatixmarketing.com (client portal) and the lead API are all serving.
+
+---
+
+## Hosting & how to deploy
+
+**Where it runs — one Contabo VPS.** There is **no CI/CD and no git-based
+deploy**: production is a *file copy* of this working tree, built and run on the
+box. (The box has no `.git`; the only git history lives on the developer's Mac.)
+
+| | |
+|---|---|
+| Host | `sohailadmin@82.197.66.10` (hostname `fp-cb-vm`), key-only SSH |
+| Path | `/home/sohailadmin/innovatix-os` |
+| Web | pm2 `innovatix-systems-web` → Next.js marketing, port **4030** |
+| Portal | pm2 `innovatix-portal` → Next.js portal, port **3001** (app.innovatixmarketing.com) |
+| API | pm2 `innovatix-api` → NestJS, **127.0.0.1:4040** (nginx proxies `/api/inx`) |
+| Worker | pm2 `innovatix-worker` → background jobs |
+| DB | Docker `innovatix-postgres` (postgres:16), **127.0.0.1:5432** |
+| Web server | nginx + Let's Encrypt (certbot, auto-renew); vhosts `innovatixsystems.com`, `app.innovatixmarketing.com` |
+
+### Deploy
+
+```bash
+DRY=1 ./scripts/deploy.sh    # preview exactly what would change (no writes)
+./scripts/deploy.sh          # rsync tree up, npm install, turbo build, pm2 restart, verify HTTPS
+```
+
+`scripts/deploy.sh` rsyncs this tree to the box (never overwriting the box's
+`.env` / `node_modules` / `.next`), then on the box runs `npm install` →
+`npm run build` (turbo) → `pm2 restart` of the four `innovatix-*` processes →
+`pm2 save`, and finally curls the two public URLs. Override the target with
+`INX_HOST` / `INX_REMOTE`.
+
+### Put it on a git remote (recommended — no offsite backup today)
+
+The repo is committed **only** on the developer's Mac with **no remote**, so
+prod = an un-versioned copy of one laptop. To back it up:
+
+```bash
+git remote add origin git@github.com:<org>/innovatix-os.git
+git push -u origin HEAD          # push the current branch
+```
+
+Deploying still uses `scripts/deploy.sh` (rsync); git is for history + backup.
+Optionally switch the box to `git pull` later.
 
 ---
 

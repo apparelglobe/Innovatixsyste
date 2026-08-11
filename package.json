@@ -6,6 +6,7 @@
   "packageManager": "npm@10.8.2",
   "scripts": {
     "build": "turbo build",
+    "deploy": "bash scripts/deploy.sh",
     "dev": "turbo dev",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
