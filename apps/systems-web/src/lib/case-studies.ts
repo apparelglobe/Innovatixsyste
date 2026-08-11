@@ -28,15 +28,15 @@ export type CaseStudy = {
 export const CASE_STUDIES: Record<string, CaseStudy> = {
   'apparel-globe': {
     slug: 'apparel-globe',
-    client: 'Apparel Globe',
+    client: 'Amazon Sellers',
     industry: 'Wholesale & Distribution · Multi-channel Commerce',
     verified: false,
-    title: 'Apparel Globe — Multi-channel Operations Platform | Innovatix Systems',
+    title: 'Amazon Sellers — Multi-channel Operations Platform | Innovatix Systems',
     metaDescription:
       'How Innovatix Systems engineered the operations platform an apparel wholesale and D2C business runs on — ERP, OMS, WMS, portals, and integrations. Verified metrics published on confirmation.',
-    h1: 'Apparel Globe: an operations platform for a multi-channel apparel business',
+    h1: 'The software Amazon sellers run their multi-channel operations on',
     summary:
-      'Innovatix Systems engineered the software Apparel Globe runs its day-to-day operations on — a connected platform spanning commerce, orders, inventory, fulfillment, finance, and portals across multiple sales channels.',
+      'Innovatix Systems engineered the software Amazon sellers run their day-to-day operations on — a connected platform spanning commerce, orders, inventory, fulfillment, finance, and portals across multiple sales channels.',
     challenge: [
       'A growing apparel business selling across multiple channels was operating on fragmented tools — orders in one place, inventory in another, finance in a third — which forced constant manual reconciliation and made a single source of truth impossible.',
       'The business needed a system that could unify channels, automate operational work, and scale — without the per-seat lock-in and misfit of packaged software.',

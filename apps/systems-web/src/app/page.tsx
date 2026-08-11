@@ -18,7 +18,7 @@ const FEATURES = [
 ];
 
 const CASES = [
-  { href: '/case-studies/apparel-globe', variant: 'light' as const, eyebrow: 'Multi-channel commerce', title: 'Apparel Globe', body: 'ERP, OMS, WMS, portals, marketplace + shipping integrations, and AI automation — one connected platform.' },
+  { href: '/case-studies/apparel-globe', variant: 'light' as const, eyebrow: 'Multi-channel commerce', title: 'Amazon Sellers', body: 'ERP, OMS, WMS, portals, marketplace + shipping integrations, and AI automation — one connected platform.' },
   { href: '/case-studies/medjaaf', variant: 'dark' as const, eyebrow: 'Healthcare · security-first', title: 'MedJAAF', body: 'Multi-tenant, security-first architecture with audit logging and enterprise authentication.' },
 ];
 

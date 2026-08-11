@@ -98,7 +98,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'How do we track progress during development?', a: 'Every client gets a connected portal with daily and weekly development reports, milestone approvals, files, contracts, and invoices — so you always know status without asking.' },
       { q: 'Do you work with our existing systems?', a: 'Yes. We build integrations with the marketplaces, payment processors, shipping carriers, and accounting tools your business already runs on.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Enterprise Software Development', href: '/services/software-engineering/enterprise-software-development' },
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
@@ -153,7 +153,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'How do you integrate with our existing enterprise systems?', a: 'We design an API-first integration layer and build tested connectors to the platforms your departments rely on, so systems share one authoritative source of truth instead of drifting apart.' },
       { q: 'How do you keep a business-critical system reliable?', a: 'Through CI/CD, automated testing, monitoring and alerting, structured logging, backups, and a documented disaster-recovery plan — plus optional ongoing maintenance and support retainers.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Custom Software Development', href: '/services/software-engineering/custom-software-development' },
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
@@ -208,7 +208,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Is our data secure and private?', a: 'Yes. We design for data security — access controls, encryption, and audit logging — and choose deployment and model options that meet your privacy requirements. We do not train third-party public models on your proprietary data without your explicit approval.' },
       { q: 'How do you prove ROI before scaling?', a: 'We measure accuracy, time saved, and error reduction against a baseline on a defined workflow first, then expand only where the numbers justify it.' },
     ],
-    proof: { label: 'Apparel Globe — AI workflows in a live operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — AI workflows in a live operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'AI Agents', href: '/services/ai-services/ai-agents' },
       { label: 'Document Intelligence', href: '/services/ai-services/document-intelligence' },
@@ -263,7 +263,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Can it integrate with our sales channels and carriers?', a: 'Yes. We build tested integrations to marketplaces (such as Amazon and Walmart), shipping carriers (USPS, UPS, FedEx), payment processors, and accounting systems so the ERP is your operational hub.' },
       { q: 'Do we have to build the whole ERP at once?', a: 'No. We deliver in phases — typically starting with the module that relieves the most operational pain — so you get value early and expand the platform over time.' },
     ],
-    proof: { label: 'Apparel Globe — a custom ERP for multi-channel operations', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a custom ERP for multi-channel operations', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Order Management Systems', href: '/services/enterprise-systems/order-management-systems' },
       { label: 'Warehouse Management Systems', href: '/services/enterprise-systems/warehouse-management-systems' },
@@ -314,7 +314,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'What happens when the API needs to change after partners are already integrated?', a: 'We version the API explicitly (via URI path or header) from the first release, so a new version can introduce breaking changes while existing consumers keep working against the version they built to. We also document a deprecation timeline so partners have a clear migration window rather than a surprise cutoff.' },
       { q: 'Can our API be built so AI agents can use it reliably?', a: "Yes — that's increasingly a design requirement, not an afterthought. A well-documented OpenAPI spec, predictable error formats, and scoped, rate-limited authentication are exactly what lets an AI agent call your API safely and consistently, the same way a human developer or partner system would." },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Custom Software Development', href: '/services/software-engineering/custom-software-development' },
       { label: 'Systems Integration', href: '/services/software-engineering/systems-integration' },
@@ -365,7 +365,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'What happens when one of our systems (a marketplace API, a carrier) goes down or changes without notice?', a: 'The integration layer is built to degrade gracefully: failed calls go to a retry queue with backoff, persistent failures land in a dead-letter queue and trigger an alert rather than silently dropping data, and other integrations keep running unaffected. When a third-party API changes its contract, the isolated connector for that system is the only piece that needs updating — it does not cascade into the rest of the pipeline.' },
       { q: 'Will we be able to see what is happening inside the integration, or is it a black box once it is built?', a: 'You get a connected client portal showing sync status, error logs, and data flow for every integration in the system — so your team can see exactly what synced, what failed and why, and how current your data is, without needing to file a ticket to find out.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Custom Software Development', href: '/services/software-engineering/custom-software-development' },
       { label: 'API Development', href: '/services/software-engineering/api-development' },
@@ -416,7 +416,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Can an agent integrate with our existing ERP, CRM, or warehouse system?', a: 'Yes — agents connect through the same secured, scoped API layer we would use for any systems integration, calling defined endpoints in your ERP, CRM, OMS, or WMS rather than requiring a rip-and-replace of those systems. The agent gets exactly the read/write access its task requires, nothing more.' },
       { q: 'How do we know what an agent is doing once it is live?', a: 'Every run is traced step by step — the plan it formed, the tools it called, the data it retrieved, and the outcome — and surfaced through a connected client portal along with cost and approval status, so your team has a real audit trail instead of a black box.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'AI Automation', href: '/services/ai-services/ai-automation' },
       { label: 'API Development', href: '/services/software-engineering/api-development' },
@@ -467,7 +467,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Does this replace our ERP or AP software?', a: 'No — it sits in front of it. The pipeline classifies and extracts documents, validates the result, and posts the structured data into your existing ERP, AP workflow, order management system, or warehouse platform through an API. You keep your system of record; you eliminate the manual re-keying step feeding it.' },
       { q: 'What happens after deployment — do we need to keep tuning it?', a: 'Some ongoing tuning is normal as new vendor formats or document variants appear, and we build the pipeline so thresholds and schemas can be adjusted without a rebuild. Support after go-live includes monitoring extraction accuracy and review volume, plus a connected client portal so you can see exactly what has been processed, flagged, or corrected at any time.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Enterprise Software Development', href: '/services/software-engineering/enterprise-software-development' },
       { label: 'API Development', href: '/services/software-engineering/api-development' },
@@ -518,7 +518,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Does the CRM integrate with our ERP and order management system, or just email and calendar?', a: 'Both. Email, calendar, and telephony integration handle day-to-day communication logging, while the deeper integration — live pricing and inventory in quoting, order and invoice status on the account timeline — connects directly to your ERP or OMS so reps work from real operational data instead of a stale copy.' },
       { q: 'What happens after launch if our sales process or org structure changes?', a: 'The CRM is your owned system, so pipeline stages, territory rules, permissions, and integrations can be changed as your business changes rather than waiting on a vendor roadmap. We remain available for ongoing changes, new integrations, and support, with all work tracked through a connected client portal for full transparency.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
       { label: 'Order Management Systems', href: '/services/enterprise-systems/order-management-systems' },
@@ -569,7 +569,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'What hardware does the mobile scanning workflow run on?', a: 'We build for the handheld and mobile scanning devices you already have or plan to standardize on — Zebra and Honeywell handhelds, or camera-based scanning on rugged tablets/phones — and design the workflow logic to enforce correct sequence and flag exceptions regardless of device.' },
       { q: 'What happens after the system goes live?', a: 'Go-live is staged by warehouse or workflow to limit risk, and we remain engaged afterward for monitoring, defect fixes, and iteration as your supplier base, product mix, or facility footprint evolves. You also get a connected client portal so your team has visibility into system activity and integration health without waiting on a status update.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
       { label: 'Inventory Management Systems', href: '/services/enterprise-systems/inventory-management-systems' },
@@ -620,7 +620,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Does this replace our ERP, WMS, or order management system, or integrate with them?', a: 'It integrates with them. The inventory core becomes the authoritative source for stock quantity and valuation, while your ERP continues to own accounting and your WMS continues to own warehouse operations — each system talks to the inventory core through defined APIs rather than keeping its own disconnected copy of the numbers.' },
       { q: 'What happens to lot, serial, or expiration data for regulated or perishable products?', a: 'Where your SKUs require it, we track inventory at the lot, serial, or expiry level rather than just the SKU level, so recalls, warranty claims, and expiration-based rotation (FIFO by expiry date) are all supported natively instead of being managed in a side spreadsheet.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Warehouse Management Systems', href: '/services/enterprise-systems/warehouse-management-systems' },
       { label: 'Order Management Systems', href: '/services/enterprise-systems/order-management-systems' },
@@ -671,7 +671,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'What happens when an order cannot be fully allocated from one location?', a: 'The engine splits the order across the fulfillment sources needed to cover it — for example shipping in-stock lines from your warehouse immediately while routing a backordered line to a drop-ship vendor — and tracks each resulting shipment against the parent order so the customer sees one accurate status, not fragmented confusion.' },
       { q: 'Do you integrate with our existing accounting and WMS, or do we need to replace them?', a: 'Integration, not replacement, is the default approach. The OMS is built to sit between your existing accounting system, WMS, inventory data, and carrier accounts — passing order, shipment, and financial events across via API or EDI so each system keeps doing what it already does well.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Warehouse Management Systems', href: '/services/enterprise-systems/warehouse-management-systems' },
       { label: 'Inventory Management Systems', href: '/services/enterprise-systems/inventory-management-systems' },
@@ -722,7 +722,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'How do you handle security in the architecture?', a: 'Security is designed in, not added afterward: least-privilege IAM roles, private subnets for anything that does not need public exposure, encryption at rest and in transit, security groups and WAF rules scoped tightly to actual traffic patterns. We do not claim formal certifications such as SOC 2, ISO, or HIPAA — we build sound security practices into the architecture and are direct about what has and has not been independently audited.' },
       { q: 'What kind of support do we get after the architecture goes live?', a: 'Monitoring, alerting, and incident response continue past launch — we do not hand off a diagram and disappear. You get full visibility into infrastructure health, deployments, and cost through a connected client portal, and an engineering team that already knows the system when something needs attention.' },
     ],
-    proof: { label: 'Apparel Globe — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Enterprise Software Development', href: '/services/software-engineering/enterprise-software-development' },
       { label: 'Systems Integration', href: '/services/software-engineering/systems-integration' },
@@ -773,7 +773,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'How do you keep the data trustworthy over time?', a: 'Every transformation ships with data tests (freshness, uniqueness, referential integrity) and monitoring, so upstream changes and failed jobs raise alerts before they reach a report.' },
       { q: 'Can you work with the systems we already run?', a: 'Yes — we build ingestion from ERPs, marketplaces, CRMs, payment processors, and third-party APIs, and land it in a warehouse you own.' },
     ],
-    proof: { label: 'Apparel Globe — a connected operational data model', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a connected operational data model', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Data Warehousing', href: '/services/data-analytics/data-warehousing' },
       { label: 'ETL & Data Pipelines', href: '/services/data-analytics/etl-pipelines' },
@@ -823,7 +823,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Which warehouse technology do you use?', a: 'We match the tool to your scale and budget — PostgreSQL for moderate volumes, a columnar/MPP warehouse for large ones — and design the model so you are not locked in.' },
       { q: 'How do you control cost?', a: 'Through sensible partitioning, incremental loads, and query tuning, plus monitoring so runaway analytical queries do not surprise you on the bill.' },
     ],
-    proof: { label: 'Apparel Globe — unified reporting across channels', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — unified reporting across channels', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Data Engineering', href: '/services/data-analytics/data-engineering' },
       { label: 'Business Intelligence', href: '/services/data-analytics/business-intelligence' },
@@ -971,7 +971,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'How current is the data?', a: 'As current as the decision needs. Most KPIs refresh on a schedule from the warehouse; where a metric truly needs to be live, we build it that way. Either way it reconciles to source.' },
       { q: 'Can we drill into a number that looks off?', a: 'Yes — every headline KPI drills into its drivers (channel, region, product, time), so you go from "what changed" to "why" without opening a ticket.' },
     ],
-    proof: { label: 'Apparel Globe — operational visibility across channels', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — operational visibility across channels', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Business Intelligence', href: '/services/data-analytics/business-intelligence' },
       { label: 'Data Warehousing', href: '/services/data-analytics/data-warehousing' },
@@ -1660,7 +1660,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Where should we start?', a: 'Usually with the assessment. Sequencing is where modernization budgets are won or lost, and you cannot sequence what you have not mapped.' },
       { q: 'Will operations keep running?', a: 'Yes — each system is modernized incrementally and reversibly, so the business continues throughout the program.' },
     ],
-    proof: { label: 'Apparel Globe — replacing fragmented tools with one platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — replacing fragmented tools with one platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Legacy Software Modernization', href: '/services/software-engineering/legacy-modernization' },
       { label: 'Architecture Assessments', href: '/services/digital-transformation/architecture-assessments' },
@@ -1759,7 +1759,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Which systems can you connect?', a: 'ERPs, marketplaces (Amazon, Walmart), storefronts, shipping carriers (USPS, UPS, FedEx), payment processors (Stripe), accounting, and internal tools — through their APIs.' },
       { q: 'How do you keep integrations from breaking?', a: 'With idempotency, retries, monitoring, and reconciliation, so failures are caught and safely re-run rather than silently corrupting data.' },
     ],
-    proof: { label: 'Apparel Globe — marketplace, carrier & payment integrations', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — marketplace, carrier & payment integrations', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Systems Integration', href: '/services/software-engineering/systems-integration' },
       { label: 'Business Process Automation', href: '/services/digital-transformation/process-automation' },
@@ -2350,7 +2350,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'How do you keep it from answering when it should not?', a: 'The system answers only from retrieved context and is designed to say "I don’t know" when nothing relevant is found, rather than inventing.' },
       { q: 'Can it respect who can see which documents?', a: 'Yes — retrieval enforces access control so users only get answers grounded in content they are allowed to see.' },
     ],
-    proof: { label: 'Apparel Globe — AI/RAG-assisted operations', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — AI/RAG-assisted operations', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Generative AI Applications', href: '/services/ai-services/generative-ai' },
       { label: 'AI Chatbots & Assistants', href: '/services/ai-services/chatbots-assistants' },
@@ -2548,7 +2548,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'How do you keep each customer’s data private?', a: 'Through authentication, role-based access, and per-customer scoping enforced on the server, with an audit trail — a customer can only ever see their own data.' },
       { q: 'Can it connect to our existing systems?', a: 'Yes — we integrate the portal with your ERP, order, invoice, and document systems so it reflects your source of truth.' },
     ],
-    proof: { label: 'Apparel Globe — customer & vendor portals on live data', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — customer & vendor portals on live data', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Vendor Portal Development', href: '/services/enterprise-systems/vendor-portals' },
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
@@ -2598,7 +2598,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Do you support EDI as well as a portal?', a: 'Yes — for suppliers who trade via EDI (850/855/856/810) we integrate that alongside the portal, so both self-service and automated exchange are covered.' },
       { q: 'Will it update our ERP?', a: 'Yes — vendor activity in the portal integrates with your ERP/procurement so your operations stay in sync without re-keying.' },
     ],
-    proof: { label: 'Apparel Globe — vendor portal & marketplace integrations', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — vendor portal & marketplace integrations', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'Customer Portal Development', href: '/services/enterprise-systems/customer-portals' },
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
@@ -2648,7 +2648,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Can it handle net terms and credit?', a: 'Yes — where your business extends credit or net terms, we build the receivables, holds, and aging logic to manage it.' },
       { q: 'How are payments reconciled?', a: 'Payments are captured (e.g. via Stripe, webhook-authoritative) and reconciled to invoices automatically, with an audit trail, rather than matched by hand.' },
     ],
-    proof: { label: 'Apparel Globe — finance & AR tied to orders', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — finance & AR tied to orders', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
       { label: 'Order Management Systems', href: '/services/enterprise-systems/order-management-systems' },
@@ -2698,7 +2698,7 @@ export const SERVICE_PAGES: Record<string, ServicePage> = {
       { q: 'Do we have to build it all at once?', a: 'No — we deliver it as connected modules on one data model, sequenced so you get value early and grow the platform over time.' },
       { q: 'Can it integrate our marketplaces and carriers?', a: 'Yes — marketplace (Amazon, Walmart), carrier (USPS/UPS/FedEx), and payment integrations are part of the platform, so operations run as one connected system.' },
     ],
-    proof: { label: 'Apparel Globe — a full multi-channel operations platform', href: '/case-studies/apparel-globe' },
+    proof: { label: 'Amazon Sellers — a full multi-channel operations platform', href: '/case-studies/apparel-globe' },
     internalLinks: [
       { label: 'ERP Development', href: '/services/enterprise-systems/erp-development' },
       { label: 'Order Management Systems', href: '/services/enterprise-systems/order-management-systems' },
