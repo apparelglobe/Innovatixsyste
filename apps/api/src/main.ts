@@ -82,7 +82,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       cb(null, false);
     },
     credentials: true, // portal uses an httpOnly session cookie
-    methods: ['POST', 'GET', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     maxAge: 600,
   });
 

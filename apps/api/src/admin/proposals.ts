@@ -116,6 +116,7 @@ export async function registerProposalAdminRoutes(app: FastifyInstance): Promise
         lineItems: { orderBy: { sortOrder: 'asc' } },
         lead: { select: { id: true, email: true, firstName: true, lastName: true, company: true, status: true } },
         contract: { select: { id: true, status: true } },
+        invoices: { where: { kind: 'DEPOSIT' }, select: { number: true, status: true, paidAt: true }, take: 1 },
       },
     });
     if (!proposal) return reply.code(404).send({ ok: false });
@@ -183,7 +184,7 @@ export async function registerProposalAdminRoutes(app: FastifyInstance): Promise
     const now = new Date();
     const { token, tokenHash } = generateProposalToken(); // raw token only leaves via the emailed link
     const expiresAt = new Date(now.getTime() + config.PORTAL_INVITE_TTL_HOURS * 3600_000);
-    await prisma.proposal.update({ where: { id: proposal.id }, data: { tokenHash, expiresAt, status: 'SENT', sentAt: now } });
+    await prisma.proposal.update({ where: { id: proposal.id }, data: { tokenHash, expiresAt, status: 'SENT', sentAt: now, viewedAt: null } });
 
     // Lead → PROPOSAL_SENT + timeline + audit.
     await prisma.lead.updateMany({ where: { id: proposal.leadId, tenantId: ctx.tenantId }, data: { status: 'PROPOSAL_SENT' } });

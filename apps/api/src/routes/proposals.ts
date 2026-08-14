@@ -130,7 +130,7 @@ export async function registerProposalRoutes(app: FastifyInstance): Promise<void
     if (!p.success) return reply.code(404).send({ ok: false, code: 'INVALID' });
     const origin = config.PORTAL_WEB_ORIGIN[0] || 'http://localhost:3001';
     const r = await startDepositCheckout(prisma, p.data.token, origin);
-    if (r.ok) return reply.send({ ok: true, url: r.url });
+    if (r.ok) return reply.send(r.paid ? { ok: true, paid: true } : { ok: true, url: r.url });
     const statusByCode = { INVALID: 404, NOT_ACCEPTED: 409, NOT_SIGNED: 409, ALREADY_PAID: 409, ERROR: 502 } as const;
     return reply.code(statusByCode[r.code]).send({ ok: false, code: r.code });
   });

@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Loader2, ShieldAlert, ShieldCheck, ArrowRight } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 
 /** Standalone shell for the public prospect pages (no session — like setup-account). */
@@ -29,8 +29,8 @@ export function ProposalLoading({ label = 'Loading…' }: { label?: string }) {
   );
 }
 
-/** Terminal status card (expired / invalid / already-done). */
-export function ProposalTerminal({ tone, title, body }: { tone: 'bad' | 'ok'; title: string; body: string }) {
+/** Terminal status card (expired / invalid / already-done). Optional CTA for states that can still move forward. */
+export function ProposalTerminal({ tone, title, body, action }: { tone: 'bad' | 'ok'; title: string; body: string; action?: { label: string; href: string } }) {
   const ok = tone === 'ok';
   return (
     <ProposalShell width="max-w-md">
@@ -42,6 +42,11 @@ export function ProposalTerminal({ tone, title, body }: { tone: 'bad' | 'ok'; ti
           <div>
             <p className={`font-semibold ${ok ? 'text-emerald-100' : 'text-red-100'}`}>{title}</p>
             <p className="mt-1 text-sm text-neutral-300">{body}</p>
+            {action && (
+              <a href={action.href} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
+                {action.label} <ArrowRight size={15} />
+              </a>
+            )}
           </div>
         </div>
       </div>

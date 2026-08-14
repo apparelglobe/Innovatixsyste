@@ -17,6 +17,7 @@ const CAPS: { action: string; label: string }[] = [
   { action: 'approval:create', label: 'Request approvals' },
   { action: 'team:assign', label: 'Assign delivery team' },
   { action: 'invoice:write', label: 'Create & send invoices' },
+  { action: 'proposal:write', label: 'Create & send proposals' },
   { action: 'lead:convert', label: 'Convert leads to clients' },
 ];
 

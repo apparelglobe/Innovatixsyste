@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Loader2, ArrowLeft, Send, Download } from 'lucide-react';
+import { Loader2, ArrowLeft, Send, Download, Pencil, CheckCircle2 } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { useStaff, staffCan } from '@/lib/useStaff';
 import { api, apiJson } from '@/lib/portal-api';
@@ -14,10 +14,12 @@ const API_BASE = process.env.NEXT_PUBLIC_PORTAL_API_URL || 'http://localhost:404
 type Line = { id: string; description: string; quantity: number; unitCents: number; amountCents: number };
 type Proposal = {
   id: string; number: string; title: string; status: string; currency: string; notes: string | null;
+  changeRequest: string | null; clientOrgId: string | null;
   subtotalCents: number; totalCents: number; depositCents: number; depositPercent: number | null;
   lineItems: Line[];
   lead: { id: string; email: string; firstName: string | null; lastName: string | null; company: string | null; status: string };
   contract: { id: string; status: string } | null;
+  invoices: { number: string; status: string; paidAt: string | null }[];
   sentAt: string | null; viewedAt: string | null; acceptedAt: string | null;
 };
 
@@ -25,12 +27,16 @@ export default function ProposalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { me, name } = useStaff();
   const [p, setP] = useState<Proposal | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const r = await apiJson<{ proposal: Proposal }>(`/admin/proposals/${id}`);
-    setP(r.body.proposal || null);
+    try {
+      const r = await apiJson<{ proposal: Proposal }>(`/admin/proposals/${id}`);
+      if (r.status === 200 && r.body.proposal) { setP(r.body.proposal); setLoadErr(false); }
+      else { setP(null); setLoadErr(true); }
+    } catch { setP(null); setLoadErr(true); }
   }, [id]);
   useEffect(() => { if (me) load(); }, [me, load]);
 
@@ -43,12 +49,27 @@ export default function ProposalDetailPage() {
     setErr(body?.message || 'Could not send the proposal. Please try again.');
   }
 
-  if (!me || !p) return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
+  if (!me || (!p && !loadErr)) return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
+
+  if (loadErr || !p) return (
+    <AdminShell staffName={name} role={me.role} active="proposals">
+      <div className="mx-auto max-w-3xl">
+        <a href="/admin/proposals" className="mb-4 inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-white"><ArrowLeft size={15} /> Proposals</a>
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+          <p className="text-sm text-red-200">We couldn&apos;t load this proposal — it may have been removed, or your session expired.</p>
+          <button onClick={() => load()} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-100 hover:border-primary/50 hover:text-white">Try again</button>
+        </div>
+      </div>
+    </AdminShell>
+  );
 
   const canWrite = staffCan(me.role, 'proposal:write');
   const s = PROPOSAL_STATUS[p.status] || { label: p.status, cls: 'bg-white/10 text-neutral-300' };
   const canSend = p.status === 'DRAFT' || p.status === 'CHANGES_REQUESTED';
   const orgName = p.lead.company || [p.lead.firstName, p.lead.lastName].filter(Boolean).join(' ') || p.lead.email;
+  const deposit = p.invoices?.[0] ?? null;
+  const depositPaid = deposit?.status === 'PAID';
+  const activated = !!p.clientOrgId;
 
   return (
     <AdminShell staffName={name} role={me.role} active="proposals">
@@ -63,6 +84,14 @@ export default function ProposalDetailPage() {
           </div>
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${s.cls}`}>{s.label}</span>
         </div>
+
+        {p.changeRequest && (
+          <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">Change requested by the prospect</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-neutral-200">{p.changeRequest}</p>
+            {canWrite && <a href={`/admin/proposals/${p.id}/edit`} className="mt-2 inline-block text-sm font-semibold text-amber-300 hover:underline">Edit &amp; re-send →</a>}
+          </div>
+        )}
 
         {p.notes && <p className="mt-4 whitespace-pre-wrap rounded-xl border border-line bg-surface p-4 text-sm leading-relaxed text-neutral-300">{p.notes}</p>}
 
@@ -97,15 +126,34 @@ export default function ProposalDetailPage() {
           </div>
         )}
 
+        {(deposit || activated) && (
+          <div className="mt-4 rounded-2xl border border-line bg-surface p-5">
+            {deposit && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-neutral-400">Activation deposit · {deposit.number}</span>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${depositPaid ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>{depositPaid ? 'Paid' : 'Due'}</span>
+              </div>
+            )}
+            {activated && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-100">
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> <span>Client activated — workspace created and the prospect was invited to set up their login.</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {err && <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300">{err}</p>}
 
         {canWrite && canSend ? (
-          <button onClick={send} disabled={busy} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
-            {busy ? <><Loader2 size={18} className="animate-spin" /> Sending…</> : <><Send size={17} /> {p.status === 'CHANGES_REQUESTED' ? 'Re-send to prospect' : 'Send to prospect'}</>}
-          </button>
-        ) : (
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <button onClick={send} disabled={busy} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
+              {busy ? <><Loader2 size={18} className="animate-spin" /> Sending…</> : <><Send size={17} /> {p.status === 'CHANGES_REQUESTED' ? 'Re-send to prospect' : 'Send to prospect'}</>}
+            </button>
+            <a href={`/admin/proposals/${p.id}/edit`} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-line-strong px-5 text-sm font-semibold text-neutral-200 hover:border-primary/50 hover:text-white"><Pencil size={15} /> Edit</a>
+          </div>
+        ) : activated ? null : (
           <p className="mt-5 rounded-lg border border-line bg-surface px-4 py-3 text-center text-sm text-neutral-400">
-            {p.status === 'ACCEPTED' ? 'Accepted by the prospect — activation proceeds once the deposit is paid.'
+            {p.status === 'ACCEPTED' ? 'Accepted by the prospect — awaiting the signed agreement and deposit to activate.'
               : p.status === 'DECLINED' ? 'This proposal was declined.'
               : 'The prospect was emailed a secure link to review this proposal.'}
           </p>

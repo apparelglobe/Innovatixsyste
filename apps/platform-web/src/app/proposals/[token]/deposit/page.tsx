@@ -29,11 +29,17 @@ export default function DepositPage() {
 
   async function pay() {
     setBusy(true); setErr(null);
-    const res = await api(`/proposals/${encodeURIComponent(token)}/deposit/checkout`, { method: 'POST', body: JSON.stringify({}) });
-    const body = await res.json().catch(() => ({}));
-    if (res.ok && body?.url) { window.location.href = body.url; return; }
-    setBusy(false);
-    setErr(body?.message || 'We could not start the payment. Please try again in a moment.');
+    try {
+      const res = await api(`/proposals/${encodeURIComponent(token)}/deposit/checkout`, { method: 'POST', body: JSON.stringify({}) });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body?.paid) { await load(); return; }                     // settled inline (stub) → re-fetch shows activated
+      if (res.ok && body?.url) { window.location.href = body.url; return; }    // hosted checkout (real provider)
+      setBusy(false);
+      setErr(body?.message || 'We could not start the payment. Please try again in a moment.');
+    } catch {
+      setBusy(false);
+      setErr('We could not reach the payment service. Please try again.');
+    }
   }
 
   if (status === 'loading') return <ProposalLoading label="Loading your deposit…" />;
@@ -76,7 +82,7 @@ export default function DepositPage() {
           <button onClick={pay} disabled={busy} className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 text-base font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark disabled:opacity-60">
             {busy ? <><Loader2 size={18} className="animate-spin" /> Opening secure checkout…</> : <><Lock size={16} /> Pay {fmtMoney(dep.amountCents || 0, dep.currency || 'USD')} deposit</>}
           </button>
-          <p className="mt-3 text-center text-xs text-neutral-500">🔒 Secure payment · you&apos;ll get a receipt by email.</p>
+          <p className="mt-3 text-center text-xs text-neutral-500">🔒 Secure payment · we&apos;ll email your workspace setup link.</p>
         </div>
       </div>
     </ProposalShell>

@@ -32,14 +32,21 @@ export default function AgreementPage() {
   const { token } = useParams<{ token: string }>();
   const [status, setStatus] = useState<Status>('loading');
   const [contract, setContract] = useState<Contract | null>(null);
+  const [depositPaid, setDepositPaid] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const pdfUrl = `${API_BASE}/proposals/${encodeURIComponent(token)}/agreement/pdf`;
 
   const load = useCallback(async () => {
     const { body } = await apiJson<{ ok: boolean; status: string; contract?: Contract }>(`/proposals/${encodeURIComponent(token)}/agreement`);
-    if ((body.status === 'READY' || body.status === 'SIGNED') && body.contract) { setContract(body.contract); setStatus(body.status); }
-    else setStatus(body.status === 'NOT_ACCEPTED' ? 'NOT_ACCEPTED' : 'INVALID');
+    if ((body.status === 'READY' || body.status === 'SIGNED') && body.contract) {
+      setContract(body.contract); setStatus(body.status);
+      if (body.status === 'SIGNED') {
+        // Already-signed link may also already be paid — check so we don't tell a paid client they still owe.
+        const dep = await apiJson<{ status: string }>(`/proposals/${encodeURIComponent(token)}/deposit`);
+        setDepositPaid(dep.body?.status === 'PAID');
+      }
+    } else setStatus(body.status === 'NOT_ACCEPTED' ? 'NOT_ACCEPTED' : 'INVALID');
   }, [token]);
 
   useEffect(() => { load().catch(() => setStatus('INVALID')); }, [load]);
@@ -82,11 +89,13 @@ export default function AgreementPage() {
         {status === 'SIGNED' ? (
           <div className="px-6 py-6">
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-              <p className="flex items-center gap-2 font-semibold text-emerald-100"><CheckCircle2 size={18} /> Signed — thank you</p>
-              <p className="mt-1 text-sm text-neutral-300">A copy has been emailed to you. One last step to kick things off: the activation deposit.</p>
+              <p className="flex items-center gap-2 font-semibold text-emerald-100"><CheckCircle2 size={18} /> {depositPaid ? "You're all set — welcome aboard" : 'Signed — thank you'}</p>
+              <p className="mt-1 text-sm text-neutral-300">{depositPaid
+                ? 'Your deposit is in and your project is activated. Check your email for the link to set up your workspace login.'
+                : 'A copy has been emailed to you. One last step to kick things off: the activation deposit.'}</p>
             </div>
             <button onClick={() => router.push(`/proposals/${encodeURIComponent(token)}/deposit`)} className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
-              Continue to deposit <ArrowRight size={18} />
+              {depositPaid ? 'View confirmation' : 'Continue to deposit'} <ArrowRight size={18} />
             </button>
           </div>
         ) : (

@@ -18,10 +18,14 @@ type Row = {
 export default function ProposalsListPage() {
   const { me, name } = useStaff();
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
 
   const load = useCallback(async () => {
-    const r = await apiJson<{ proposals: Row[] }>('/admin/proposals');
-    setRows(r.body.proposals || []);
+    try {
+      const r = await apiJson<{ proposals: Row[] }>('/admin/proposals');
+      if (r.status === 200 && Array.isArray(r.body.proposals)) { setRows(r.body.proposals); setLoadErr(false); }
+      else { setRows([]); setLoadErr(true); }
+    } catch { setRows([]); setLoadErr(true); }
   }, []);
   useEffect(() => { if (me) load(); }, [me, load]);
 
@@ -36,6 +40,12 @@ export default function ProposalsListPage() {
           {canWrite && <a href="/admin/proposals/new" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark"><Plus size={16} /> New proposal</a>}
         </div>
 
+        {loadErr ? (
+          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+            <p className="text-sm text-red-200">We couldn&apos;t load your proposals — your session may have expired.</p>
+            <button onClick={() => load()} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-100 hover:border-primary/50 hover:text-white">Try again</button>
+          </div>
+        ) : (
         <div className="mt-6 overflow-hidden rounded-2xl border border-line bg-surface">
           <div className="divide-y divide-line">
             {rows.length === 0 ? (
@@ -58,6 +68,7 @@ export default function ProposalsListPage() {
             })}
           </div>
         </div>
+        )}
       </div>
     </AdminShell>
   );

@@ -55,7 +55,7 @@ export default function ProposalReviewPage() {
 
   if (status === 'loading') return <ProposalLoading label="Loading your proposal…" />;
   if (status === 'ACCEPTED') return (
-    <ProposalTerminal tone="ok" title="You've already accepted this proposal" body="The next step is to sign the agreement — open the link in your email, or continue below." />
+    <ProposalTerminal tone="ok" title="You've already accepted this proposal" body="Continue to your agreement and deposit — you'll pick up right where you left off." action={{ label: 'Continue', href: `/proposals/${encodeURIComponent(token)}/agreement` }} />
   );
   if (status === 'EXPIRED') return <ProposalTerminal tone="bad" title="This proposal link has expired" body="Ask your Innovatix contact to resend it — your details are saved." />;
   if (status === 'DECLINED') return <ProposalTerminal tone="bad" title="This proposal was declined" body="If that wasn't intended, contact your Innovatix representative." />;

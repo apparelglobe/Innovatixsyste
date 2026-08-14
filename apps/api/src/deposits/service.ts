@@ -10,6 +10,8 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { hashProposalToken } from '../lib/proposal-links';
 import { nextDocumentNumber } from '../lib/numbering';
 import { checkoutGateway } from '../billing/gateway';
+import { markInvoicePaid } from '../billing/mark-paid';
+import { config } from '../config';
 
 /** Create the deposit invoice for an accepted proposal. Idempotent by (proposal, kind=DEPOSIT). Call inside a $transaction. */
 export async function createDepositInvoiceForProposal(tx: Prisma.TransactionClient, params: {
@@ -47,7 +49,8 @@ export async function depositStatusByToken(prisma: PrismaClient, token: string):
 }
 
 export type DepositCheckoutResult =
-  | { ok: true; url: string }
+  | { ok: true; paid: true } // stub/dev: settled inline (no hosted page a prospect can reach)
+  | { ok: true; paid: false; url: string } // real provider: redirect to hosted checkout
   | { ok: false; code: 'INVALID' | 'NOT_ACCEPTED' | 'NOT_SIGNED' | 'ALREADY_PAID' | 'ERROR' };
 
 /** Open a checkout session for the deposit — gated on accepted + signed. Records a PENDING payment (no org yet). */
@@ -88,5 +91,15 @@ export async function startDepositCheckout(prisma: PrismaClient, token: string, 
     });
   }
   await prisma.invoice.update({ where: { id: inv.id }, data: { paymentUrl: session.url } });
-  return { ok: true, url: session.url };
+
+  // The stub "hosted page" (/pay/:id) requires a portal login — which a not-yet-onboarded
+  // prospect does not have. So in stub/dev mode, settle inline here: run the SAME paid
+  // transition (+ activation) the real webhook would, keeping the Payment coherent.
+  // Never in production, and never for a real provider (Stripe returns its hosted URL).
+  if (gateway.name === 'stub' && config.NODE_ENV !== 'production') {
+    await prisma.payment.updateMany({ where: { invoiceId: inv.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } });
+    await markInvoicePaid(prisma, inv.id, 'deposit-demo');
+    return { ok: true, paid: true };
+  }
+  return { ok: true, paid: false, url: session.url };
 }
