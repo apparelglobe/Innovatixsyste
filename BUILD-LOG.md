@@ -3,8 +3,8 @@
 > **The route we follow, and the record of everything we build.**
 > Companion to [`PROJECT-CANON.md`](./PROJECT-CANON.md) — the canon says *what & why*; this file says *in what order*, and (once we start) *what was actually built*.
 
-**Status: ✅ PHASE 1 COMPLETE (on local dev) — the activation gate works end to end.**
-Proposal → accept → sign agreement (with PDF copy) → pay deposit → the prospect becomes an activated client with a workspace. Built on branch `feat/phase-1-activation-gate` against a **local dev database only**, verified via live smoke tests at every slice. **Nothing is deployed to production, nothing was charged** — awaiting your review + release decision. Every slice is recorded in the Build Log below.
+**Status: 🚀 PHASE 1 BACKEND DEPLOYED TO PRODUCTION (2026-08-14).**
+The activation gate (proposal → accept → sign → deposit → activate) is built, verified, and the **backend + DB schema are live on prod** — 4 migrations applied, api + worker restarted, `/health` 200, new routes live. Prod DB was backed up before migrating (offsite copy on the Mac). **Still pending:** the Phase 1 **UI** (no user-facing pages yet) and seeding the **service catalog** on prod. Nothing is chargeable yet — with no UI, the deposit flow can't be triggered.
 
 **Last updated:** 2026-08-14
 
@@ -130,6 +130,13 @@ Phase 5  AI + scheduling +    →  stronger funnel & polish
 - Status: in progress | done | verified
 - Notes: <decisions, deviations, follow-ups>
 ```
+
+### 2026-08-14 — DEPLOY: Phase 1 backend → production 🚀
+- **Backup first (non-negotiable):** `docker exec innovatix-postgres pg_dump` of prod `innovatix` → `~/innovatix-backup-preP1.sql.gz` on the box **+ an offsite copy on the Mac** (`backups/`, gzip-verified). No offsite backup existed before.
+- **Shipped:** rsync of `apps/api` (src + prisma) to the box (excluding `.env`/node_modules/build); `prisma generate`; `prisma migrate deploy` applied the **4 Phase 1 migrations** to prod (additive — new tables + two nullable columns, nothing dropped); `pm2 restart innovatix-api innovatix-worker` (box runs via `tsx` — no build step needed).
+- **Verified on prod:** migrate status *up to date*; `innovatix-api` online + clean boot (`listening … env=production`, no errors, no crash-loop); `/health` → **200**; new `/v1/admin/services` → **401**.
+- **Not deployed (by design):** the frontend UI (staff proposal builder + prospect review/sign/pay pages) and the seeded service catalog on prod. With no UI, the deposit flow can't be triggered → nothing chargeable.
+- **Next:** seed the catalog on prod (catalog-only, NOT the demo seed which creates demo org/staff); build the Phase 1 UI.
 
 ### 2026-08-14 — Phase 1 · Slice 6: Activation on deposit-paid — ✅ PHASE 1 COMPLETE
 - **Built:** the payoff. When the deposit is paid, `markInvoicePaid`'s deposit hook calls `activateFromDeposit` → reuses **`convertLead`** to create the **ClientOrg + first Project** (DISCOVERY, 5 milestones, delivery lead) **+ a secure portal invitation** (OWNER), then **backfills** the new org/project onto the proposal, contract, deposit invoice, and payment. New `src/activation/service.ts`.
