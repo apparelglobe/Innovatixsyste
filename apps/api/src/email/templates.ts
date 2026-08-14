@@ -123,6 +123,57 @@ export function clientInvitationEmail(params: {
   return { subject, html, text };
 }
 
+/**
+ * Proposal ready-to-review email. Carries a secure review LINK (no login) — the
+ * prospect reviews, requests changes, or accepts on the linked page.
+ */
+export function proposalSentEmail(params: {
+  orgName: string;
+  reviewUrl: string;
+  expiresAt: Date;
+  supportEmail: string;
+}): Built {
+  const { orgName, reviewUrl, expiresAt, supportEmail } = params;
+  const expires = expiresAt.toUTCString();
+  const subject = `Your Innovatix proposal — ${orgName}`;
+  const html = shell('Your proposal is ready to review', `
+    <p style="color:#cbd5e1;line-height:1.6">Your proposal from <strong style="color:#fff">Innovatix Systems</strong> for <strong style="color:#fff">${escapeHtml(orgName)}</strong> is ready. You can review it, ask for changes, or accept it — all from the secure link below. No account needed.</p>
+    <p><a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">Review your proposal</a></p>
+    <p style="color:#94a3b8;font-size:13px;line-height:1.6">This secure link expires on <strong style="color:#cbd5e1">${escapeHtml(expires)}</strong>. If it has expired, ask your Innovatix contact to resend it.</p>
+    <p style="color:#64748b;font-size:12px;line-height:1.6;margin-top:16px">Questions? Contact us at <a href="mailto:${escapeHtml(supportEmail)}" style="color:${BRAND}">${escapeHtml(supportEmail)}</a>.</p>`);
+  const text = [
+    `Your Innovatix Systems proposal for ${orgName} is ready to review.`,
+    ``,
+    `Review, request changes, or accept:`,
+    reviewUrl,
+    ``,
+    `This secure link expires on ${expires}. If it has expired, ask your Innovatix contact to resend it.`,
+    ``,
+    `Questions? Contact ${supportEmail}.`,
+  ].join('\n');
+  return { subject, html, text };
+}
+
+/** Signed-agreement confirmation — the customer's copy, on a secure link. */
+export function agreementSignedEmail(params: { orgName: string; number: string; viewUrl: string; supportEmail: string }): Built {
+  const { orgName, number, viewUrl, supportEmail } = params;
+  const subject = `Your signed agreement — ${orgName}`;
+  const html = shell('Your agreement is signed', `
+    <p style="color:#cbd5e1;line-height:1.6">Thank you — your Services Agreement <strong style="color:#fff">${escapeHtml(number)}</strong> for <strong style="color:#fff">${escapeHtml(orgName)}</strong> has been signed. Keep this for your records — you can view or download your signed copy anytime from the secure link below.</p>
+    <p><a href="${escapeHtml(viewUrl)}" style="display:inline-block;background:${BRAND};color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">View my signed agreement</a></p>
+    <p style="color:#94a3b8;font-size:13px;line-height:1.6">The only remaining step to begin your project is the activation deposit. Questions? Contact us at <a href="mailto:${escapeHtml(supportEmail)}" style="color:${BRAND}">${escapeHtml(supportEmail)}</a>.</p>`);
+  const text = [
+    `Your Services Agreement ${number} for ${orgName} has been signed.`,
+    ``,
+    `View or download your signed copy:`,
+    viewUrl,
+    ``,
+    `The only remaining step to begin your project is the activation deposit.`,
+    `Questions? Contact ${supportEmail}.`,
+  ].join('\n');
+  return { subject, html, text };
+}
+
 /** Generic in-app notification mirrored to email. */
 export function notificationEmail(title: string, body: string | null, linkUrl?: string): Built {
   const html = shell(title, `

@@ -4,13 +4,13 @@
  * the calling side-effect job retries. The dev 'outbox' transport is a no-op
  * send, so the recorded row IS the delivered message.
  */
-import type { PrismaClient } from '@prisma/client';
+import type { EmailType, PrismaClient } from '@prisma/client';
 import { makeTransport } from './transports';
 import { config } from '../config';
 
 type SendArgs = {
   tenantId: string;
-  type: 'LEAD_ACK' | 'INTERNAL_LEAD_NOTIFY' | 'BOOKING_CONFIRM' | 'ASSIGNMENT_NOTIFY' | 'SLA_WARNING' | 'SIDE_EFFECT_FAILURE_ALERT' | 'PORTAL_INVITE' | 'NOTIFICATION';
+  type: EmailType;
   to: string;
   built: { subject: string; html: string; text: string };
   leadId?: string | null;

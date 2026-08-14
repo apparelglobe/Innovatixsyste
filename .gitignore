@@ -9,6 +9,10 @@ out/
 .env
 .env.local
 .env.*.local
+# local copies of prod/dev secrets — never commit (templates .env.example / .env.production.example stay tracked)
+.env.prod-pull
+.env.*-pull
+.env.dev
 
 # local dev database cluster (brew Postgres, no Docker)
 .pgdata/

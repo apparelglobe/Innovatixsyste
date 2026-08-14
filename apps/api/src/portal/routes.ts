@@ -238,7 +238,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       include: { lineItems: { orderBy: { createdAt: 'asc' } }, project: { select: { clientOrg: { select: { name: true } } } } },
     });
     if (!inv) return reply.code(404).send({ ok: false });
-    const pdf = renderInvoicePdfFrom(await enrichInvoice(inv), inv.project.clientOrg.name);
+    const pdf = renderInvoicePdfFrom(await enrichInvoice(inv), inv.project?.clientOrg.name ?? '');
     reply.header('content-type', 'application/pdf');
     reply.header('content-disposition', `inline; filename="${inv.number}.pdf"`);
     return reply.send(pdf);

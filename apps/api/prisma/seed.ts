@@ -6,6 +6,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
+import { CATALOG_SEED } from './seed-data/catalog.js';
 
 const prisma = new PrismaClient();
 const slug = process.env.INNOVATIX_DEFAULT_TENANT_SLUG || 'innovatix-systems';
@@ -140,11 +141,49 @@ async function seedStaff(tenantId: string) {
   console.log('✓ seeded staff users (admin + delivery lead + engineer)');
 }
 
+// Full service catalog — the real 61 Innovatix services, generated from the marketing
+// site (apps/systems-web) into ./seed-data/catalog.ts. No pricing tiers on the site, so
+// each service gets one quote-only "Custom engagement" package carrying its verbatim
+// "What you get" deliverables. Idempotent (upsert by slug; deliverables replaced in place).
+async function seedCatalog(tenantId: string) {
+  // Reconcile: drop any catalog services no longer in the generated set (e.g. earlier starter rows).
+  const keep = CATALOG_SEED.map((c) => c.slug);
+  const stale = await prisma.service.findMany({ where: { tenantId, slug: { notIn: keep } }, select: { id: true } });
+  for (const s of stale) {
+    const pkgs = await prisma.servicePackage.findMany({ where: { serviceId: s.id }, select: { id: true } });
+    const pkgIds = pkgs.map((p) => p.id);
+    if (pkgIds.length) {
+      await prisma.catalogDeliverable.deleteMany({ where: { servicePackageId: { in: pkgIds } } });
+      await prisma.servicePackage.deleteMany({ where: { id: { in: pkgIds } } });
+    }
+    await prisma.service.delete({ where: { id: s.id } });
+  }
+  if (stale.length) console.log(`✓ catalog reconcile: removed ${stale.length} stale service(s)`);
+  for (let i = 0; i < CATALOG_SEED.length; i++) {
+    const c = CATALOG_SEED[i];
+    const service = await prisma.service.upsert({
+      where: { tenantId_slug: { tenantId, slug: c.slug } },
+      update: { name: c.name, category: c.category, categorySlug: c.categorySlug, categoryLabel: c.categoryLabel, summary: c.summary, sortOrder: i },
+      create: { tenantId, slug: c.slug, name: c.name, category: c.category, categorySlug: c.categorySlug, categoryLabel: c.categoryLabel, summary: c.summary, sortOrder: i },
+    });
+    let pkg = await prisma.servicePackage.findFirst({ where: { tenantId, serviceId: service.id, name: 'Custom engagement' } });
+    if (!pkg) {
+      pkg = await prisma.servicePackage.create({
+        data: { tenantId, serviceId: service.id, name: 'Custom engagement', summary: 'Scoped during discovery; fixed-scope proposal with milestone-based pricing.', priceCents: null, sortOrder: 0 },
+      });
+    }
+    await prisma.catalogDeliverable.deleteMany({ where: { tenantId, servicePackageId: pkg.id } });
+    await prisma.catalogDeliverable.createMany({ data: c.deliverables.map((label, idx) => ({ tenantId, servicePackageId: pkg!.id, label, sortOrder: idx })) });
+  }
+  console.log(`✓ seeded catalog: ${CATALOG_SEED.length} services (full catalog, 1 package each)`);
+}
+
 async function main() {
   const tenant = await prisma.tenant.upsert({ where: { slug }, update: {}, create: { slug, name: 'Innovatix Systems' } });
   console.log(`✓ seeded tenant: ${tenant.slug} (${tenant.id})`);
   await seedPortal(tenant.id);
   await seedStaff(tenant.id);
+  await seedCatalog(tenant.id);
   console.log(`\n  Portal (client) login → ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
   console.log(`  Admin (staff) login  → ${STAFF_EMAIL} / ${STAFF_PASSWORD}\n`);
 }

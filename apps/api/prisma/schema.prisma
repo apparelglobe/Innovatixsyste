@@ -58,6 +58,7 @@ model Lead {
   jobTitle        String?
 
   status          LeadStatus @default(NEW)
+  estimatedValueCents Int?     // pipeline value, set when a proposal is drafted
 
   firstTouchAttributionId String? @unique
   firstTouchAttribution   LeadAttribution? @relation("FirstTouch", fields: [firstTouchAttributionId], references: [id])
@@ -74,6 +75,7 @@ model Lead {
   assignment  Assignment?
   slaTimers   SlaTimer[]
   meetings    Meeting[]
+  proposals   Proposal[]
 
   @@unique([tenantId, normalizedEmail]) // concurrency-safe dedup identity
   @@index([tenantId, status])
@@ -92,6 +94,7 @@ model LeadInquiry {
 
   form            InquiryForm
   serviceInterest String?
+  serviceId       String?   // resolved catalog Service, when known
   projectDescription String?
   budgetRange     String?
   desiredStartWindow String?
@@ -117,6 +120,7 @@ model LeadInquiry {
   @@unique([tenantId, idempotencyKey]) // double-click / retry protection
   @@index([tenantId, leadId])
   @@index([tenantId, submittedAt])
+  @@index([tenantId, serviceId])
   @@map("lead_inquiries")
 }
 
@@ -525,8 +529,14 @@ model ProjectFile {
 model Invoice {
   id         String        @id @default(cuid())
   tenantId   String
-  projectId  String
-  project    Project       @relation(fields: [projectId], references: [id])
+  // projectId is optional: a DEPOSIT invoice is issued against an accepted proposal
+  // BEFORE the project exists (paying it is what creates the project — Canon §5).
+  projectId  String?
+  project    Project?      @relation(fields: [projectId], references: [id])
+  clientOrgId String?      // set for deposit invoices that precede a project
+  proposalId String?
+  proposal   Proposal?     @relation(fields: [proposalId], references: [id])
+  kind       InvoiceKind   @default(STANDARD)
   number     String
   amountCents Int
   currency   String        @default("USD")
@@ -544,6 +554,8 @@ model Invoice {
 
   @@index([tenantId, projectId])
   @@index([projectId, status])
+  @@index([tenantId, clientOrgId])
+  @@index([tenantId, proposalId])
   @@map("invoices")
 }
 
@@ -557,6 +569,7 @@ model InvoiceLineItem {
   unitCents   Int
   amountCents Int
   milestoneId String?
+  servicePackageId String?  // snapshot reference to the catalog package (no FK)
   createdAt   DateTime @default(now())
 
   @@index([invoiceId])
@@ -570,7 +583,7 @@ model InvoiceLineItem {
 model Payment {
   id                 String        @id @default(cuid())
   tenantId           String
-  clientOrgId        String
+  clientOrgId        String? // null for a DEPOSIT payment — the org is created at activation (Canon §5)
   invoiceId          String
   invoice            Invoice       @relation(fields: [invoiceId], references: [id])
 
@@ -707,6 +720,186 @@ model Notification {
   @@map("notifications")
 }
 
+// ── Activation Gate (Phase 1): catalog → proposal → contract → deposit ───────
+// Sales-side artifacts that live against a LEAD on a secure link BEFORE a client
+// account exists. Per Canon §5, the client org / account / project are created
+// ONLY after the activation deposit is paid. New tables follow the portal
+// convention: scalar tenantId (indexed) for tenant-scoping; real FKs for
+// within-feature links. Money is integer cents + currency, as elsewhere.
+
+model Service {
+  id            String          @id @default(cuid())
+  tenantId      String
+  slug          String
+  name          String
+  category      ServiceCategory @default(OTHER) // coarse bucket for code
+  categorySlug  String?         // real category slug from the marketing site (e.g. "enterprise-systems")
+  categoryLabel String?         // real category label (e.g. "Enterprise Systems")
+  summary       String?
+  active        Boolean         @default(true)
+  sortOrder     Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  packages  ServicePackage[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, active])
+  @@index([tenantId, categorySlug])
+  @@map("services")
+}
+
+model ServicePackage {
+  id         String   @id @default(cuid())
+  tenantId   String
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id])
+  name       String   // e.g. "Standard", "Pro"
+  summary    String?
+  priceCents Int?     // indicative/base price; null = quote-only
+  currency   String   @default("USD")
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  deliverables  CatalogDeliverable[]
+  proposalItems ProposalLineItem[]
+
+  @@index([tenantId, serviceId])
+  @@map("service_packages")
+}
+
+model CatalogDeliverable {
+  id               String         @id @default(cuid())
+  tenantId         String
+  servicePackageId String
+  servicePackage   ServicePackage @relation(fields: [servicePackageId], references: [id])
+  label            String
+  sortOrder        Int            @default(0)
+  createdAt        DateTime       @default(now())
+
+  @@index([tenantId, servicePackageId])
+  @@map("catalog_deliverables")
+}
+
+model Proposal {
+  id             String         @id @default(cuid())
+  tenantId       String
+  leadId         String
+  lead           Lead           @relation(fields: [leadId], references: [id])
+  clientOrgId    String?        // set at activation
+  number         String         // human-facing, e.g. PROP-0001
+  title          String
+  status         ProposalStatus @default(DRAFT)
+  currency       String         @default("USD")
+  subtotalCents  Int            @default(0)
+  totalCents     Int            @default(0)
+  depositCents   Int            @default(0) // the activation payment amount
+  depositPercent Int?                       // % used to compute it (default 33)
+  notes          String?                    // scope summary / message to the client
+  changeRequest  String?                    // last "request changes" note from the prospect
+  // Secure-link access — only the SHA-256 hash of the token is stored (ClientInvitation pattern).
+  tokenHash      String?        @unique
+  expiresAt      DateTime?
+  sentAt         DateTime?
+  viewedAt       DateTime?
+  acceptedAt     DateTime?
+  declinedAt     DateTime?
+  supersededById String?                    // the revision that replaced this one
+  createdByStaffUserId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  lineItems ProposalLineItem[]
+  contract  Contract?
+  invoices  Invoice[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, leadId])
+  @@index([tenantId, status])
+  @@index([expiresAt])
+  @@map("proposals")
+}
+
+model ProposalLineItem {
+  id               String          @id @default(cuid())
+  tenantId         String
+  proposalId       String
+  proposal         Proposal        @relation(fields: [proposalId], references: [id])
+  servicePackageId String?
+  servicePackage   ServicePackage? @relation(fields: [servicePackageId], references: [id])
+  description      String
+  quantity         Int             @default(1)
+  unitCents        Int
+  amountCents      Int
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+
+  @@index([proposalId])
+  @@map("proposal_line_items")
+}
+
+model Contract {
+  id           String         @id @default(cuid())
+  tenantId     String
+  proposalId   String         @unique
+  proposal     Proposal       @relation(fields: [proposalId], references: [id])
+  leadId       String
+  clientOrgId  String?
+  number       String         // e.g. AGR-0001
+  title        String
+  bodyMarkdown String?        // the agreement text presented for signing
+  contentHash  String?        // SHA-256 of the exact text shown (signing evidence)
+  version      Int            @default(1)
+  status       ContractStatus @default(DRAFT)
+  provider     String         @default("inhouse") // 'inhouse' | 'docusign' | …
+  sentAt       DateTime?
+  signedAt     DateTime?
+  createdByStaffUserId String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  signatures ContractSignature[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@map("contracts")
+}
+
+model ContractSignature {
+  id                 String     @id @default(cuid())
+  tenantId           String
+  contractId         String
+  contract           Contract   @relation(fields: [contractId], references: [id])
+  signerType         SignerType @default(CLIENT)
+  signerName         String
+  signerEmail        String
+  signerTitle        String?
+  // Evidence — no raw IP (Canon privacy rule): salted hash + UA + the content hash signed.
+  ipHash             String?
+  userAgent          String?
+  contentHash        String?
+  provider           String     @default("inhouse")
+  providerEnvelopeId String?
+  signedAt           DateTime   @default(now())
+
+  @@index([tenantId, contractId])
+  @@map("contract_signatures")
+}
+
+// Per-tenant, per-kind atomic counter for human-facing document numbers (PROP-0001, AGR-0001…).
+// Allocated via upsert+increment inside a transaction — the race-safe pattern used by RateLimitCounter.
+model DocumentCounter {
+  tenantId  String
+  kind      String   // 'PROPOSAL' | 'CONTRACT' | 'INVOICE'
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([tenantId, kind])
+  @@map("document_counters")
+}
+
 // ── Enums ────────────────────────────────────────────────────────────────────
 enum StaffRole {
   ADMIN
@@ -739,6 +932,11 @@ enum NotificationType {
   INVOICE_CREATED
   INVOICE_DUE
   PROJECT_STATUS_CHANGED
+  PROPOSAL_SENT
+  PROPOSAL_VIEWED
+  PROPOSAL_ACCEPTED
+  CONTRACT_SIGNED
+  DEPOSIT_PAID
 }
 
 enum ClientUserRole {
@@ -774,6 +972,8 @@ enum ApprovalStatus {
 
 enum FileCategory {
   CONTRACT
+  SIGNED_CONTRACT
+  PROPOSAL
   INVOICE
   DELIVERABLE
   OTHER
@@ -856,6 +1056,9 @@ enum LeadStatus {
   QUALIFIED
   DISQUALIFIED
   CONVERTED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
 }
 
 enum InquiryForm {
@@ -889,6 +1092,12 @@ enum ActivityType {
   MEETING_UPDATED
   SLA_STARTED
   SLA_BREACHED
+  PROPOSAL_SENT
+  PROPOSAL_VIEWED
+  PROPOSAL_CHANGES_REQUESTED
+  PROPOSAL_ACCEPTED
+  CONTRACT_SIGNED
+  DEPOSIT_PAID
 }
 
 enum ActorType {
@@ -906,6 +1115,7 @@ enum JobType {
   BOOKING_CONFIRM
   ASSIGNMENT_NOTIFY
   SLA_WARNING
+  PROPOSAL_EXPIRE
 }
 
 enum JobStatus {
@@ -925,6 +1135,10 @@ enum EmailType {
   SIDE_EFFECT_FAILURE_ALERT
   PORTAL_INVITE
   NOTIFICATION
+  PROPOSAL_SENT
+  CONTRACT_SIGN_REQUEST
+  DEPOSIT_RECEIPT
+  ACTIVATION_INVITE
 }
 
 enum EmailStatus {
@@ -950,4 +1164,46 @@ enum MeetingStatus {
   SCHEDULED
   RESCHEDULED
   CANCELED
+}
+
+// ── Phase 1: Activation Gate enums ───────────────────────────────────────────
+enum ServiceCategory {
+  WEB
+  MOBILE
+  SOFTWARE
+  CLOUD
+  AI
+  DATA
+  CONSULTING
+  OTHER
+}
+
+enum InvoiceKind {
+  STANDARD
+  DEPOSIT
+  MILESTONE
+  FINAL
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  CHANGES_REQUESTED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum ContractStatus {
+  DRAFT
+  SENT
+  SIGNED
+  VOID
+}
+
+enum SignerType {
+  CLIENT
+  STAFF
 }

@@ -31,7 +31,7 @@ import { scanUploadedFile } from '../scanning/service';
 
 type StaffCtx = { session: NonNullable<ReturnType<typeof verifyStaff>>; tenantId: string };
 
-async function requireStaff(req: FastifyRequest, reply: FastifyReply, action?: Action): Promise<StaffCtx | null> {
+export async function requireStaff(req: FastifyRequest, reply: FastifyReply, action?: Action): Promise<StaffCtx | null> {
   const cookie = (req as unknown as { cookies?: Record<string, string> }).cookies?.[STAFF_COOKIE];
   const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || undefined;
   const session = verifyStaff(cookie || bearer);
@@ -49,7 +49,7 @@ async function scopedProject(tenantId: string, id: string) {
   return prisma.project.findFirst({ where: { id, tenantId }, select: { id: true, clientOrgId: true, name: true, status: true } });
 }
 
-async function audit(tenantId: string, staffId: string, entityType: string, entityId: string, action: string, data?: object) {
+export async function audit(tenantId: string, staffId: string, entityType: string, entityId: string, action: string, data?: object) {
   await prisma.auditEvent.create({ data: { tenantId, entityType, entityId, action, actorType: 'ADMIN', actorId: staffId, data: data ?? undefined } });
 }
 async function activity(tenantId: string, projectId: string, type: string, message: string) {
@@ -292,8 +292,10 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     });
     if (status) {
       await audit(ctx.tenantId, ctx.session.sub, 'Invoice', inv.id, `INVOICE_${status}`, { number: inv.number });
-      await activity(ctx.tenantId, inv.project.id, 'INVOICE', `Invoice ${inv.number} marked ${status}`);
-      if (status === 'SENT') await notifyClientOrg(prisma, ctx.tenantId, inv.project.clientOrgId, { type: 'INVOICE_CREATED', title: `New invoice ${inv.number}`, projectId: inv.project.id, linkPath: '/invoices', email: true });
+      if (inv.project) {
+        await activity(ctx.tenantId, inv.project.id, 'INVOICE', `Invoice ${inv.number} marked ${status}`);
+        if (status === 'SENT') await notifyClientOrg(prisma, ctx.tenantId, inv.project.clientOrgId, { type: 'INVOICE_CREATED', title: `New invoice ${inv.number}`, projectId: inv.project.id, linkPath: '/invoices', email: true });
+      }
     }
     return reply.send({ ok: true });
   });
@@ -320,6 +322,8 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (inv.status === 'PAID') return reply.code(409).send({ ok: false, message: 'Invoice already paid.' });
     if (inv.status === 'DRAFT') return reply.code(409).send({ ok: false, message: 'Invoice is not payable yet (still a draft).' });
     if (inv.amountCents <= 0) return reply.code(409).send({ ok: false, message: 'Invoice has no payable amount.' });
+    const clientOrgId = inv.project?.clientOrgId ?? inv.clientOrgId;
+    if (!clientOrgId) return reply.code(409).send({ ok: false, message: 'This invoice is not linked to a client yet.' });
 
     // Staff-generated links go through the SAME real payment gateway as client
     // self-checkout (`checkoutGateway()` = StripeGateway when PAYMENTS_PROVIDER=stripe),
@@ -346,7 +350,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     // Record the pending payment so the webhook can settle it (same as client checkout).
     await prisma.payment.create({
       data: {
-        tenantId: inv.tenantId, clientOrgId: inv.project.clientOrgId, invoiceId: inv.id,
+        tenantId: inv.tenantId, clientOrgId, invoiceId: inv.id,
         provider: gateway.name, amountCents: inv.amountCents, currency: inv.currency,
         status: 'PENDING', checkoutSessionId: session.sessionId, providerCustomerId: session.providerCustomerId ?? null,
       },
@@ -364,7 +368,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       include: { lineItems: { orderBy: { createdAt: 'asc' } }, project: { select: { clientOrg: { select: { name: true } } } } },
     });
     if (!inv) return reply.code(404).send({ ok: false });
-    const pdf = renderInvoicePdfFrom(await enrichInvoice(inv), inv.project.clientOrg.name);
+    const pdf = renderInvoicePdfFrom(await enrichInvoice(inv), inv.project?.clientOrg.name ?? '');
     reply.header('content-type', 'application/pdf');
     reply.header('content-disposition', `inline; filename="${inv.number}.pdf"`);
     return reply.send(pdf);

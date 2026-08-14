@@ -76,7 +76,7 @@ export async function processProviderWebhook(
     await auditFail('PAYMENT_FAILED', reason);
     incr('payments_total', { result: 'failed' });
     alert({ kind: 'payment.failed', level: 'warning', message: `Payment failed for invoice ${invoice.number}: ${reason}`, tenantId: invoice.tenantId, data: { invoiceId } });
-    await notifyStaff(prisma, invoice.tenantId, { type: 'INVOICE_CREATED', title: `Payment failed for ${invoice.number}`, body: reason, projectId: invoice.projectId, linkPath: `/admin/projects/${invoice.projectId}`, email: false }).catch(() => undefined);
+    await notifyStaff(prisma, invoice.tenantId, { type: 'INVOICE_CREATED', title: `Payment failed for ${invoice.number}`, body: reason, projectId: invoice.projectId ?? undefined, linkPath: invoice.projectId ? `/admin/projects/${invoice.projectId}` : '/admin', email: false }).catch(() => undefined);
     return 'failed_recorded';
   }
 
@@ -102,8 +102,10 @@ export async function processProviderWebhook(
   // Create a Payment row on demand (e.g. a stub direct webhook with no prior
   // checkout) — amount comes from the invoice, never from the event.
   if (!payment) {
+    const clientOrgId = invoice.project?.clientOrgId ?? invoice.clientOrgId ?? null;
+    if (!clientOrgId && invoice.kind !== 'DEPOSIT') { await auditFail('PAYMENT_NO_CLIENT_ORG', 'invoice has no linked client org'); return 'mismatch'; }
     payment = await prisma.payment.create({
-      data: { tenantId: invoice.tenantId, clientOrgId: invoice.project.clientOrgId, invoiceId, provider: providerName, amountCents: invoice.amountCents, currency: invoice.currency, status: 'PENDING', checkoutSessionId: parsed.sessionId ?? null },
+      data: { tenantId: invoice.tenantId, clientOrgId, invoiceId, provider: providerName, amountCents: invoice.amountCents, currency: invoice.currency, status: 'PENDING', checkoutSessionId: parsed.sessionId ?? null },
     });
   }
   if (payment.status !== 'PAID') {
