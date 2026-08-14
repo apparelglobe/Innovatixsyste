@@ -3,8 +3,8 @@
 > **The route we follow, and the record of everything we build.**
 > Companion to [`PROJECT-CANON.md`](./PROJECT-CANON.md) — the canon says *what & why*; this file says *in what order*, and (once we start) *what was actually built*.
 
-**Status: 🚀 PHASE 1 BACKEND DEPLOYED TO PRODUCTION (2026-08-14).**
-The activation gate (proposal → accept → sign → deposit → activate) is built, verified, and the **backend + DB schema are live on prod** — 4 migrations applied, api + worker restarted, `/health` 200, new routes live. Prod DB was backed up before migrating (offsite copy on the Mac). **Still pending:** the Phase 1 **UI** (no user-facing pages yet) and seeding the **service catalog** on prod. Nothing is chargeable yet — with no UI, the deposit flow can't be triggered.
+**Status: 🚀 PHASE 1 BACKEND LIVE ON PROD · UI BUILT (build-verified, not yet deployed) — 2026-08-14.**
+The activation gate (proposal → accept → sign → deposit → activate) is built and verified. **Backend + DB schema are live on prod** — 4 migrations applied, api + worker restarted, `/health` 200; the **61-service catalog is seeded on prod** (catalog-only). The **Phase 1 UI is now built** — prospect pages (review/accept/sign/pay) + staff proposal builder (list/new/detail/send) — and passes `tsc` + a full `next build` (20/20 routes). **Still pending:** deploy the UI to prod, and confirm prod payment mode (stub vs live Stripe) before the pay page goes live. Nothing is chargeable until the UI ships.
 
 **Last updated:** 2026-08-14
 
@@ -130,6 +130,16 @@ Phase 5  AI + scheduling +    →  stronger funnel & polish
 - Status: in progress | done | verified
 - Notes: <decisions, deviations, follow-ups>
 ```
+
+### 2026-08-14 — Phase 1 · UI: prospect flow + staff proposal builder
+- **Built:** the entire user-facing half of the activation gate, in platform-web's dark house theme — reusing the `portal-api` client, the `setup-account` public-token pattern, `fmt.ts`, and `AdminShell`.
+- **Prospect pages (public, secure `[token]` link, no login):** `/proposals/[token]` (review → **Accept** / **Request a change**), `/proposals/[token]/agreement` (read the agreement → **type-to-sign** + PDF download), `/proposals/[token]/deposit` (**Pay** → *"you're activated"*). Shared `components/proposal-ui.tsx` (Shell + Loading + Terminal + a 3-step trail). Token read via `useParams` (path segment), each page a small state machine over the API's status dialect.
+- **Staff pages (`/admin/proposals`):** list (status pills), `new` (builder — pick a lead, add line items **from the 61-service catalog** or custom, set deposit %, live totals, save draft), `[id]` (detail + timeline + agreement PDF + **Send to prospect**). `lib/proposal-status.ts` shares the status→pill map.
+- **Changed:** `AdminShell.tsx` (+**Proposals** nav, `FileText` icon); `useStaff.ts` (staffCan +`proposal:write` for ADMIN/DELIVERY_LEAD, mirroring server RBAC).
+- **Verified:** `tsc --noEmit` clean **and** a full `next build` — 20/20 routes generated, all six new routes present. No browser/runtime test yet (needs the stack running or a deploy).
+- **Deferred (small, non-blocking):** edit-a-draft page (the `PATCH /admin/proposals/:id` endpoint already exists); the Stripe deposit `success_url` returns to the logged-in `/invoices/:id` rather than the proposal page — activation still completes via webhook + portal-invite email, but the post-pay redirect for a not-yet-onboarded prospect is a rough edge to polish.
+- **Status:** ✅ built & build-verified on local. **Not deployed — prod UI untouched.**
+- **Next:** see it running (local stack + a demo proposal), then deploy the UI; confirm prod payment mode before the pay page goes live.
 
 ### 2026-08-14 — DEPLOY: Phase 1 backend → production 🚀
 - **Backup first (non-negotiable):** `docker exec innovatix-postgres pg_dump` of prod `innovatix` → `~/innovatix-backup-preP1.sql.gz` on the box **+ an offsite copy on the Mac** (`backups/`, gzip-verified). No offsite backup existed before.
