@@ -34,7 +34,8 @@ EXCLUDES=(
   --exclude '.env' --exclude '.env.*' --exclude 'apps/*/.env' --exclude 'apps/*/.env.*'
 )
 
-RSYNC=(-az --human-readable --info=stats1,progress2 "${EXCLUDES[@]}")
+# macOS ships openrsync (no --info= / rsync-3 flags); --stats works on both openrsync and rsync 3.x.
+RSYNC=(-az --human-readable --stats "${EXCLUDES[@]}")
 [ -n "${DRY:-}" ]   && RSYNC+=(--dry-run)
 [ -n "${PRUNE:-}" ] && RSYNC+=(--delete)
 
