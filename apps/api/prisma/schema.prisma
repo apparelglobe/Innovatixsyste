@@ -432,6 +432,7 @@ model Project {
   messages   PortalMessage[]
   members    ProjectMember[]
   activities PortalActivity[]
+  activatedFrom Proposal[]     @relation("ProposalActivation")
 
   @@index([tenantId, clientOrgId])
   @@index([tenantId, status])
@@ -789,6 +790,8 @@ model Proposal {
   leadId         String
   lead           Lead           @relation(fields: [leadId], references: [id])
   clientOrgId    String?        // set at activation
+  projectId      String?        // the engagement project created at activation (1:1 with this proposal)
+  activatedAt    DateTime?      // when the deposit-paid activation completed (the recorded transition)
   number         String         // human-facing, e.g. PROP-0001
   title          String
   status         ProposalStatus @default(DRAFT)
@@ -814,6 +817,7 @@ model Proposal {
   lineItems ProposalLineItem[]
   contract  Contract?
   invoices  Invoice[]
+  project   Project?           @relation("ProposalActivation", fields: [projectId], references: [id])
 
   @@unique([tenantId, number])
   @@index([tenantId, leadId])

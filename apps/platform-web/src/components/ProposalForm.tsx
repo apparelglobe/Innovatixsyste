@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { apiJson } from '@/lib/portal-api';
 import { fmtMoney } from '@/lib/fmt';
 
@@ -14,6 +14,10 @@ export type ProposalLine = { description: string; quantity: number; unit: string
 export type ProposalPayload = { leadId: string; title: string; notes?: string; depositPercent: number; lineItems: { description: string; quantity: number; unitCents: number }[] };
 
 const INPUT = 'w-full rounded-lg border border-line-strong bg-white/[0.03] px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30';
+
+/** Whole-dollar helpers for the price field: display with thousands separators, store raw digits. */
+const withCommas = (raw: string) => (raw ? Number(raw).toLocaleString('en-US') : '');
+const onlyDigits = (s: string) => s.replace(/[^\d]/g, '');
 
 /**
  * The shared proposal builder body — used by both the create page (mode="new",
@@ -71,6 +75,18 @@ export function ProposalForm({
   }
   function update(i: number, patch: Partial<ProposalLine>) { setLines((v) => v.map((li, idx) => (idx === i ? { ...li, ...patch } : li))); }
   function remove(i: number) { setLines((v) => (v.length === 1 ? v : v.filter((_, idx) => idx !== i))); }
+  function move(i: number, dir: -1 | 1) {
+    setLines((v) => {
+      const j = i + dir;
+      const a = v[i];
+      const b = v[j];
+      if (!a || !b) return v;
+      const next = [...v];
+      next[i] = b;
+      next[j] = a;
+      return next;
+    });
+  }
 
   async function submit() {
     setErr(null);
@@ -93,6 +109,12 @@ export function ProposalForm({
 
   return (
     <div className="mt-6 space-y-5 rounded-2xl border border-line bg-surface p-6">
+      {err && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5">
+          <p className="text-sm text-red-200">{err}</p>
+          <button type="button" onClick={submit} disabled={saving} className="shrink-0 rounded-md border border-red-400/40 px-2.5 py-1 text-xs font-semibold text-red-100 transition hover:bg-red-500/20 disabled:opacity-50">Retry</button>
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-neutral-200">For lead</span>
@@ -133,21 +155,37 @@ export function ProposalForm({
           </div>
         </div>
 
-        <div className="mb-1 hidden grid-cols-[1fr_64px_110px_28px] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 sm:grid">
-          <span>Description</span><span className="text-center">Qty</span><span>Unit price</span><span />
+        <div className="mb-1 hidden grid-cols-[20px_1fr_56px_104px_24px] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 sm:grid">
+          <span /><span>Description</span><span className="text-center">Qty</span><span>Unit price</span><span />
         </div>
         <div className="space-y-2">
-          {lines.map((li, i) => (
-            <div key={i} className="grid grid-cols-[1fr_56px_100px_28px] items-center gap-2 sm:grid-cols-[1fr_64px_110px_28px]">
-              <input value={li.description} onChange={(e) => update(i, { description: e.target.value })} placeholder="What's included" className="rounded-lg border border-line-strong bg-white/[0.03] px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none" />
-              <input type="number" min={1} value={li.quantity} onChange={(e) => update(i, { quantity: parseInt(e.target.value) || 1 })} className="rounded-lg border border-line-strong bg-white/[0.03] px-2 py-2 text-center text-sm text-white focus:border-primary/60 focus:outline-none" />
-              <div className="relative">
-                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-neutral-500">$</span>
-                <input type="number" min={0} step="1" value={li.unit} onChange={(e) => update(i, { unit: e.target.value })} placeholder="0" className="w-full rounded-lg border border-line-strong bg-white/[0.03] py-2 pl-6 pr-2 text-sm text-white focus:border-primary/60 focus:outline-none" />
+          {lines.map((li, i) => {
+            const unitCents = Math.round((parseFloat(li.unit) || 0) * 100);
+            const amountCents = unitCents * (li.quantity || 1);
+            return (
+              <div key={i}>
+                <div className="grid grid-cols-[20px_1fr_48px_88px_22px] items-center gap-1.5 sm:grid-cols-[20px_1fr_56px_104px_24px] sm:gap-2">
+                  <div className="flex flex-col items-center text-neutral-600">
+                    <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="transition hover:text-neutral-200 disabled:opacity-25" aria-label="Move line up"><ChevronUp size={14} /></button>
+                    <button type="button" onClick={() => move(i, 1)} disabled={i === lines.length - 1} className="transition hover:text-neutral-200 disabled:opacity-25" aria-label="Move line down"><ChevronDown size={14} /></button>
+                  </div>
+                  <input value={li.description} onChange={(e) => update(i, { description: e.target.value })} placeholder="What's included" className="rounded-lg border border-line-strong bg-white/[0.03] px-3 py-2 text-sm text-white focus:border-primary/60 focus:outline-none" />
+                  <input type="number" min={1} value={li.quantity} onChange={(e) => update(i, { quantity: parseInt(e.target.value) || 1 })} className="rounded-lg border border-line-strong bg-white/[0.03] px-1.5 py-2 text-center text-sm text-white focus:border-primary/60 focus:outline-none" />
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-neutral-500">$</span>
+                    <input inputMode="numeric" value={withCommas(li.unit)} onChange={(e) => update(i, { unit: onlyDigits(e.target.value) })} placeholder="0" className="w-full rounded-lg border border-line-strong bg-white/[0.03] py-2 pl-6 pr-2 text-sm tabular-nums text-white focus:border-primary/60 focus:outline-none" />
+                  </div>
+                  <button type="button" onClick={() => remove(i)} disabled={lines.length === 1} className="grid h-8 w-6 place-items-center rounded-lg text-neutral-500 transition hover:text-red-400 disabled:opacity-25" aria-label="Remove line"><Trash2 size={15} /></button>
+                </div>
+                {li.unit && (
+                  <div className="mt-0.5 pr-7 text-right text-[11px] text-neutral-500">
+                    {li.quantity > 1 && <>Qty {li.quantity} × {fmtMoney(unitCents)} = </>}
+                    <span className="font-semibold text-neutral-300">{fmtMoney(amountCents)}</span>
+                  </div>
+                )}
               </div>
-              <button type="button" onClick={() => remove(i)} className="grid h-8 w-7 place-items-center rounded-lg text-neutral-500 transition hover:text-red-400" aria-label="Remove line"><Trash2 size={15} /></button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -155,8 +193,6 @@ export function ProposalForm({
         <span className="text-neutral-400">Total <b className="tabular-nums text-white">{fmtMoney(totals.subtotal)}</b></span>
         <span className="text-neutral-400">Deposit ({depositPercent}%) <b className="tabular-nums text-amber-300">{fmtMoney(totals.deposit)}</b></span>
       </div>
-
-      {err && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300">{err}</p>}
 
       <button onClick={submit} disabled={saving} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
         {saving ? <><Loader2 size={18} className="animate-spin" /> Saving…</> : submitLabel}

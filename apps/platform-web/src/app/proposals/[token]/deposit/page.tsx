@@ -8,7 +8,7 @@ import { fmtMoney } from '@/lib/fmt';
 import { ProposalShell, ProposalLoading, ProposalTerminal, ProposalSteps } from '@/components/proposal-ui';
 
 type Status = 'loading' | 'DUE' | 'PAID' | 'NOT_READY' | 'INVALID';
-type Deposit = { status: string; amountCents?: number; currency?: string; number?: string };
+type Deposit = { status: string; amountCents?: number; currency?: string; number?: string; proposalNumber?: string; totalCents?: number };
 
 export default function DepositPage() {
   const router = useRouter();
@@ -45,7 +45,7 @@ export default function DepositPage() {
   if (status === 'loading') return <ProposalLoading label="Loading your deposit…" />;
   if (status === 'NOT_READY') return (
     <ProposalShell width="max-w-md">
-      <ProposalSteps current="deposit" />
+      <ProposalSteps current="deposit" token={token} />
       <div className="rounded-2xl border border-line bg-surface p-6 text-center shadow-card">
         <p className="text-white">Please sign the agreement first.</p>
         <button onClick={() => router.push(`/proposals/${encodeURIComponent(token)}/agreement`)} className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white shadow-cta hover:bg-primary-dark">
@@ -58,7 +58,7 @@ export default function DepositPage() {
 
   if (status === 'PAID') return (
     <ProposalShell width="max-w-md">
-      <ProposalSteps current="deposit" />
+      <ProposalSteps current="deposit" token={token} complete />
       <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center shadow-card">
         <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full bg-emerald-500/20 text-emerald-300"><PartyPopper size={26} /></div>
         <h1 className="text-xl font-extrabold text-white">You&apos;re all set — welcome aboard!</h1>
@@ -70,11 +70,13 @@ export default function DepositPage() {
   // DUE
   return (
     <ProposalShell width="max-w-md">
-      <ProposalSteps current="deposit" />
+      <ProposalSteps current="deposit" token={token} />
       <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
         <div className="px-6 py-6 text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary-light">Activation deposit{dep.number ? ` · ${dep.number}` : ''}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary-light">Activation deposit</p>
+          {dep.proposalNumber && <p className="mt-1 text-sm text-neutral-300">{dep.proposalNumber} · {fmtMoney(dep.totalCents || 0, dep.currency || 'USD')} total</p>}
           <p className="mt-2 text-4xl font-extrabold tracking-tight text-white">{fmtMoney(dep.amountCents || 0, dep.currency || 'USD')}</p>
+          {dep.number && <p className="mt-1 text-xs text-neutral-500">{dep.number} · due now</p>}
           <p className="mt-3 text-sm leading-relaxed text-neutral-300">Pay securely and your project workspace opens automatically — then we get started. The balance is billed in stages as we deliver.</p>
         </div>
         {err && <div className="mx-6 mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300">{err}</div>}

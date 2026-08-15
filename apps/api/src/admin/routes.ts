@@ -96,8 +96,9 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   // ── Projects ──
   app.get('/admin/projects', async (req, reply) => {
     const ctx = await requireStaff(req, reply, 'project:view'); if (!ctx) return;
+    const q = req.query as { clientOrgId?: string };
     const projects = await prisma.project.findMany({
-      where: { tenantId: ctx.tenantId },
+      where: { tenantId: ctx.tenantId, ...(q.clientOrgId ? { clientOrgId: q.clientOrgId } : {}) },
       orderBy: { updatedAt: 'desc' },
       include: { clientOrg: { select: { name: true } }, _count: { select: { milestones: true, approvals: true } } },
     });

@@ -31,7 +31,7 @@ export async function createDepositInvoiceForProposal(tx: Prisma.TransactionClie
   });
 }
 
-export type DepositStatus = { status: 'DUE' | 'PAID' | 'NOT_READY'; amountCents: number; currency: string; number: string } | { status: 'INVALID' };
+export type DepositStatus = { status: 'DUE' | 'PAID' | 'NOT_READY'; amountCents: number; currency: string; number: string; proposalNumber: string; totalCents: number } | { status: 'INVALID' };
 
 /** Deposit state for the prospect's page: NOT_READY until the agreement is signed, then DUE, then PAID. */
 export async function depositStatusByToken(prisma: PrismaClient, token: string): Promise<DepositStatus> {
@@ -45,7 +45,7 @@ export async function depositStatusByToken(prisma: PrismaClient, token: string):
   if (!inv) return { status: 'INVALID' };
   const signed = prop.contract?.status === 'SIGNED';
   const status = inv.status === 'PAID' ? 'PAID' : signed ? 'DUE' : 'NOT_READY';
-  return { status, amountCents: inv.amountCents, currency: inv.currency, number: inv.number };
+  return { status, amountCents: inv.amountCents, currency: inv.currency, number: inv.number, proposalNumber: prop.number, totalCents: prop.totalCents };
 }
 
 export type DepositCheckoutResult =

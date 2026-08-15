@@ -54,10 +54,16 @@ export async function registerProposalAdminRoutes(app: FastifyInstance): Promise
     const proposals = await prisma.proposal.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { createdAt: 'desc' }, take: 100,
-      include: { lead: { select: { email: true, firstName: true, lastName: true, company: true } }, _count: { select: { lineItems: true } } },
+      include: {
+        lead: { select: { email: true, firstName: true, lastName: true, company: true } },
+        _count: { select: { lineItems: true } },
+        contract: { select: { status: true } },
+        invoices: { where: { kind: 'DEPOSIT' }, select: { status: true }, take: 1 },
+      },
     });
     return reply.send({ ok: true, proposals: proposals.map((p) => ({
       id: p.id, number: p.number, title: p.title, status: p.status,
+      activatedAt: p.activatedAt, contractStatus: p.contract?.status ?? null, depositStatus: p.invoices[0]?.status ?? null,
       totalCents: p.totalCents, depositCents: p.depositCents, currency: p.currency, items: p._count.lineItems,
       lead: { email: p.lead.email, name: [p.lead.firstName, p.lead.lastName].filter(Boolean).join(' ') || null, company: p.lead.company },
       sentAt: p.sentAt, viewedAt: p.viewedAt, acceptedAt: p.acceptedAt, createdAt: p.createdAt,

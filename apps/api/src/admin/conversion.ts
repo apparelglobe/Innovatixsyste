@@ -13,7 +13,7 @@
  * created only when the invitation is accepted.
  */
 import { randomBytes } from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { issueInvitation } from '../invitations/service';
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'client';
@@ -27,6 +27,26 @@ export type ConvertResult = {
 };
 
 const DEFAULT_MILESTONES = ['Discovery & Planning', 'System Architecture', 'Build', 'QA & UAT', 'Deployment'];
+
+/**
+ * Create a fresh engagement project under an existing client org — default milestones,
+ * a delivery-lead member, a portal activity, and an audit event. Used per activated
+ * proposal so each engagement is its own 1:1 project (a returning client gets a NEW
+ * project for the new deal rather than reusing the first). Call inside a $transaction.
+ */
+export async function createEngagementProject(
+  tx: Prisma.TransactionClient,
+  params: { tenantId: string; clientOrgId: string; leadId: string | null; staffId: string; staffName: string; name: string },
+): Promise<{ id: string }> {
+  const project = await tx.project.create({
+    data: { tenantId: params.tenantId, clientOrgId: params.clientOrgId, leadId: params.leadId, name: params.name, status: 'DISCOVERY' },
+  });
+  await tx.milestone.createMany({ data: DEFAULT_MILESTONES.map((name, i) => ({ tenantId: params.tenantId, projectId: project.id, name, sequence: i + 1, status: (i === 0 ? 'IN_PROGRESS' : 'PLANNED') as 'IN_PROGRESS' | 'PLANNED' })) });
+  await tx.projectMember.create({ data: { tenantId: params.tenantId, projectId: project.id, staffUserId: params.staffId, name: params.staffName, role: 'Delivery Lead', clientVisible: true } });
+  await tx.portalActivity.create({ data: { tenantId: params.tenantId, projectId: project.id, type: 'PROJECT', message: 'Project created' } });
+  await tx.auditEvent.create({ data: { tenantId: params.tenantId, entityType: 'Project', entityId: project.id, action: 'PROJECT_CREATED', actorType: 'ADMIN', actorId: params.staffId, data: { fromLead: params.leadId } } });
+  return { id: project.id };
+}
 
 export async function convertLead(
   prisma: PrismaClient,

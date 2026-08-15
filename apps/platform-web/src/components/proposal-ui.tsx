@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Loader2, ShieldAlert, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Loader2, ShieldAlert, ShieldCheck, ArrowRight, Check } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 
 /** Standalone shell for the public prospect pages (no session — like setup-account). */
@@ -54,25 +54,33 @@ export function ProposalTerminal({ tone, title, body, action }: { tone: 'bad' | 
   );
 }
 
-/** Small progress trail across the three prospect steps. */
-export function ProposalSteps({ current }: { current: 'review' | 'agreement' | 'deposit' }) {
-  const steps: { key: string; label: string }[] = [
-    { key: 'review', label: 'Review' },
-    { key: 'agreement', label: 'Sign' },
-    { key: 'deposit', label: 'Deposit' },
+/** Small progress trail across the three prospect steps. Completed steps get a check
+ *  and (given a token) are clickable to go back and review. */
+export function ProposalSteps({ current, token, complete = false }: { current: 'review' | 'agreement' | 'deposit'; token?: string; complete?: boolean }) {
+  const steps: { key: string; label: string; href?: string }[] = [
+    { key: 'review', label: 'Review', href: token ? `/proposals/${encodeURIComponent(token)}` : undefined },
+    { key: 'agreement', label: 'Sign', href: token ? `/proposals/${encodeURIComponent(token)}/agreement` : undefined },
+    { key: 'deposit', label: 'Deposit', href: token ? `/proposals/${encodeURIComponent(token)}/deposit` : undefined },
   ];
   const idx = steps.findIndex((s) => s.key === current);
   return (
     <div className="mb-5 flex items-center justify-center gap-2 text-xs">
-      {steps.map((s, i) => (
-        <span key={s.key} className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold ${i <= idx ? 'bg-primary/15 text-primary-light' : 'bg-white/5 text-neutral-500'}`}>
-            <span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${i < idx ? 'bg-primary text-white' : i === idx ? 'bg-primary-light text-white' : 'bg-white/10 text-neutral-400'}`}>{i + 1}</span>
+      {steps.map((s, i) => {
+        const done = i < idx || (complete && i === idx);
+        const active = i === idx && !complete;
+        const pill = (
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold ${done ? 'bg-emerald-500/15 text-emerald-300' : active ? 'bg-primary/15 text-primary-light' : 'bg-white/5 text-neutral-500'}`}>
+            <span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${done ? 'bg-emerald-500 text-white' : active ? 'bg-primary-light text-white' : 'bg-white/10 text-neutral-400'}`}>{done ? <Check size={11} /> : i + 1}</span>
             {s.label}
           </span>
-          {i < steps.length - 1 && <span className="text-neutral-600">→</span>}
-        </span>
-      ))}
+        );
+        return (
+          <span key={s.key} className="flex items-center gap-2">
+            {done && s.href ? <a href={s.href} title={`Back to ${s.label}`} className="rounded-full transition hover:opacity-80">{pill}</a> : pill}
+            {i < steps.length - 1 && <span className="text-neutral-600">→</span>}
+          </span>
+        );
+      })}
     </div>
   );
 }

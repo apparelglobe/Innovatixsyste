@@ -6,10 +6,11 @@ import { AdminShell } from '@/components/AdminShell';
 import { useStaff, staffCan } from '@/lib/useStaff';
 import { apiJson } from '@/lib/portal-api';
 import { fmtDate, fmtMoney } from '@/lib/fmt';
-import { PROPOSAL_STATUS } from '@/lib/proposal-status';
+import { deriveStage, STAGE, TONE_CLASS } from '@/lib/proposal-stage';
 
 type Row = {
   id: string; number: string; title: string; status: string;
+  activatedAt: string | null; contractStatus: string | null; depositStatus: string | null;
   totalCents: number; depositCents: number; currency: string; items: number;
   lead: { email: string; name: string | null; company: string | null };
   sentAt: string | null; viewedAt: string | null; acceptedAt: string | null; createdAt: string;
@@ -54,7 +55,7 @@ export default function ProposalsListPage() {
                 {canWrite && <a href="/admin/proposals/new" className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary-light hover:underline"><Plus size={15} /> Build one from a lead</a>}
               </div>
             ) : rows.map((p) => {
-              const s = PROPOSAL_STATUS[p.status] || { label: p.status, cls: 'bg-white/10 text-neutral-300' };
+              const m = STAGE[deriveStage({ status: p.status, contractStatus: p.contractStatus, depositStatus: p.depositStatus, activatedAt: p.activatedAt })];
               return (
                 <a key={p.id} href={`/admin/proposals/${p.id}`} className="flex flex-wrap items-center gap-3 p-4 transition hover:bg-white/[0.03]">
                   <div className="min-w-0 flex-1">
@@ -62,7 +63,7 @@ export default function ProposalsListPage() {
                     <div className="text-xs text-neutral-500">{p.lead.company || p.lead.name || p.lead.email} · {p.items} item{p.items === 1 ? '' : 's'} · {fmtDate(p.createdAt)}</div>
                   </div>
                   <div className="text-right text-sm font-semibold tabular-nums text-white">{fmtMoney(p.totalCents, p.currency)}</div>
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.cls}`}>{s.label}</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${TONE_CLASS[m.tone]}`}>{m.label}</span>
                 </a>
               );
             })}

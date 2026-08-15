@@ -10,7 +10,7 @@
  * system acts as the staff who created the proposal (falling back to an admin).
  */
 import type { PrismaClient } from '@prisma/client';
-import { convertLead } from '../admin/conversion';
+import { convertLead, createEngagementProject } from '../admin/conversion';
 
 export async function activateFromDeposit(prisma: PrismaClient, invoiceId: string): Promise<void> {
   const inv = await prisma.invoice.findUnique({
@@ -40,10 +40,23 @@ export async function activateFromDeposit(prisma: PrismaClient, invoiceId: strin
 
   const result = await convertLead(prisma, inv.tenantId, staffId, staffName, inv.proposal.leadId, { projectName: inv.proposal.title });
 
-  // Backfill the org/project onto everything that preceded them.
-  await prisma.proposal.updateMany({ where: { id: inv.proposal.id, tenantId: inv.tenantId }, data: { clientOrgId: result.clientOrgId } });
+  // Each accepted+paid proposal is its own engagement = its own project. First-time conversion
+  // already created one (named for this proposal); a RETURNING client (org already existed) needs a
+  // NEW project for THIS deal rather than reusing the first — otherwise proposal↔project isn't 1:1.
+  let projectId: string | null = result.projectId || null;
+  if (result.alreadyConverted) {
+    const proj = await prisma.$transaction((tx) => createEngagementProject(tx, {
+      tenantId: inv.tenantId, clientOrgId: result.clientOrgId, leadId: inv.proposal!.leadId,
+      staffId, staffName, name: inv.proposal!.title,
+    }));
+    projectId = proj.id;
+  }
+
+  const now = new Date();
+  // Record the activation transition (activatedAt + projectId) + backfill org/project onto everything that preceded them.
+  await prisma.proposal.updateMany({ where: { id: inv.proposal.id, tenantId: inv.tenantId }, data: { clientOrgId: result.clientOrgId, projectId, activatedAt: now } });
   await prisma.contract.updateMany({ where: { proposalId: inv.proposal.id, tenantId: inv.tenantId }, data: { clientOrgId: result.clientOrgId } });
-  await prisma.invoice.update({ where: { id: inv.id }, data: { clientOrgId: result.clientOrgId, projectId: result.projectId || null } });
+  await prisma.invoice.update({ where: { id: inv.id }, data: { clientOrgId: result.clientOrgId, projectId } });
   await prisma.payment.updateMany({ where: { invoiceId: inv.id }, data: { clientOrgId: result.clientOrgId } });
-  await prisma.auditEvent.create({ data: { tenantId: inv.tenantId, entityType: 'Proposal', entityId: inv.proposal.id, action: 'ACTIVATED', actorType: 'SYSTEM', data: { clientOrgId: result.clientOrgId, projectId: result.projectId, invitedEmail: result.invitedEmail } } });
+  await prisma.auditEvent.create({ data: { tenantId: inv.tenantId, entityType: 'Proposal', entityId: inv.proposal.id, action: 'ACTIVATED', actorType: 'SYSTEM', data: { clientOrgId: result.clientOrgId, projectId, invitedEmail: result.invitedEmail, returningClient: result.alreadyConverted } } });
 }

@@ -6,6 +6,7 @@ import { Loader2, ArrowRight, CheckCircle2, MessageSquare } from 'lucide-react';
 import { api, apiJson } from '@/lib/portal-api';
 import { fmtMoney } from '@/lib/fmt';
 import { ProposalShell, ProposalLoading, ProposalTerminal, ProposalSteps } from '@/components/proposal-ui';
+import { STAGE } from '@/lib/proposal-stage';
 
 type LineItem = { description: string; quantity: number; unitCents: number; amountCents: number };
 type Proposal = {
@@ -55,10 +56,10 @@ export default function ProposalReviewPage() {
 
   if (status === 'loading') return <ProposalLoading label="Loading your proposal…" />;
   if (status === 'ACCEPTED') return (
-    <ProposalTerminal tone="ok" title="You've already accepted this proposal" body="Continue to your agreement and deposit — you'll pick up right where you left off." action={{ label: 'Continue', href: `/proposals/${encodeURIComponent(token)}/agreement` }} />
+    <ProposalTerminal tone="ok" title={STAGE.ACCEPTED.prospectTitle!} body={STAGE.ACCEPTED.prospectBody!} action={{ label: 'Continue', href: `/proposals/${encodeURIComponent(token)}/agreement` }} />
   );
-  if (status === 'EXPIRED') return <ProposalTerminal tone="bad" title="This proposal link has expired" body="Ask your Innovatix contact to resend it — your details are saved." />;
-  if (status === 'DECLINED') return <ProposalTerminal tone="bad" title="This proposal was declined" body="If that wasn't intended, contact your Innovatix representative." />;
+  if (status === 'EXPIRED') return <ProposalTerminal tone="bad" title={STAGE.EXPIRED.prospectTitle!} body={STAGE.EXPIRED.prospectBody!} />;
+  if (status === 'DECLINED') return <ProposalTerminal tone="bad" title={STAGE.DECLINED.prospectTitle!} body={STAGE.DECLINED.prospectBody!} />;
   if (status === 'INVALID' || !proposal) return <ProposalTerminal tone="bad" title="This link is invalid" body="Check that you used the full link from your email, or ask your Innovatix contact to resend it." />;
 
   if (mode === 'sent') return (
@@ -70,7 +71,7 @@ export default function ProposalReviewPage() {
 
   return (
     <ProposalShell>
-      <ProposalSteps current="review" />
+      <ProposalSteps current="review" token={token} />
       <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
         <div className="border-b border-line px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-primary-light">Prepared for {proposal.orgName} · {proposal.number}</p>
