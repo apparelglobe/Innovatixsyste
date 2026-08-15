@@ -46,10 +46,14 @@ if [ -n "${DRY:-}" ]; then
   exit 0
 fi
 
-echo "▶ install + build + restart on ${HOST}"
+echo "▶ install + migrate + build + restart on ${HOST}"
 ssh "$HOST" "set -euo pipefail
   cd '${REMOTE}'
   npm install
+  # Regenerate the Prisma client + apply any PENDING migrations BEFORE restarting the API,
+  # so the new code never queries a schema that hasn't caught up. Both are idempotent (no-op
+  # when nothing changed). Reads the prod DATABASE_URL from apps/api/.env.
+  ( cd apps/api && npx prisma generate && npx prisma migrate deploy )
   npm run build                 # turbo build → apps/{systems-web,platform-web}/.next
   pm2 restart innovatix-systems-web innovatix-portal innovatix-api innovatix-worker --update-env
   pm2 save
