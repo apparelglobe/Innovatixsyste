@@ -37,11 +37,18 @@ const schema = z.object({
   LEADS_RATE_LIMIT_WINDOW_MS: int(10 * 60 * 1000),
   ABUSE_HASH_SALT: z.string().default('dev-salt-change-me'),
 
-  EMAIL_TRANSPORT: z.enum(['outbox', 'postmark']).default('outbox'),
+  EMAIL_TRANSPORT: z.enum(['outbox', 'postmark', 'smtp']).default('outbox'),
   EMAIL_FROM: z.string().default('Innovatix Systems <hello@innovatixmarketing.com>'),
   EMAIL_INTERNAL_TO: z.string().default('sales@innovatixmarketing.com'),
   POSTMARK_SERVER_TOKEN: z.string().optional().default(''),
   POSTMARK_MESSAGE_STREAM: z.string().default('outbound'),
+  // SMTP transport (e.g. Google Workspace) — an alternative to Postmark that reuses mail
+  // you already pay for. Port 465 = implicit TLS (SMTP_SECURE=true); 587 = STARTTLS (false).
+  SMTP_HOST: z.string().optional().default(''),
+  SMTP_PORT: int(465),
+  SMTP_SECURE: bool(true),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
 
   DEV_OUTBOX_VIEWER: bool(true),
 
@@ -162,6 +169,9 @@ const secretProblems = validateProductionSecrets({
   CLAMAV_REQUIRED_IN_PRODUCTION: parsed.data.CLAMAV_REQUIRED_IN_PRODUCTION,
   EMAIL_TRANSPORT: parsed.data.EMAIL_TRANSPORT,
   POSTMARK_SERVER_TOKEN: parsed.data.POSTMARK_SERVER_TOKEN,
+  SMTP_HOST: parsed.data.SMTP_HOST,
+  SMTP_USER: parsed.data.SMTP_USER,
+  SMTP_PASS: parsed.data.SMTP_PASS,
   PAYMENTS_PROVIDER: parsed.data.PAYMENTS_PROVIDER,
   STRIPE_SECRET_KEY: parsed.data.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: parsed.data.STRIPE_WEBHOOK_SECRET,

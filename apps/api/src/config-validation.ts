@@ -46,6 +46,9 @@ export interface ProdSecretEnv {
   CLAMAV_REQUIRED_IN_PRODUCTION?: boolean;
   EMAIL_TRANSPORT: string;
   POSTMARK_SERVER_TOKEN: string;
+  SMTP_HOST?: string;
+  SMTP_USER?: string;
+  SMTP_PASS?: string;
   PAYMENTS_PROVIDER: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
@@ -94,6 +97,11 @@ export function validateProductionSecrets(env: ProdSecretEnv): string[] {
   // Provider-conditional required secrets.
   if (env.EMAIL_TRANSPORT === 'postmark' && (env.POSTMARK_SERVER_TOKEN ?? '').trim() === '') {
     errors.push('POSTMARK_SERVER_TOKEN is required when EMAIL_TRANSPORT=postmark.');
+  }
+  if (env.EMAIL_TRANSPORT === 'smtp') {
+    if ((env.SMTP_HOST ?? '').trim() === '') errors.push('SMTP_HOST is required when EMAIL_TRANSPORT=smtp.');
+    if ((env.SMTP_USER ?? '').trim() === '') errors.push('SMTP_USER is required when EMAIL_TRANSPORT=smtp.');
+    if ((env.SMTP_PASS ?? '').trim() === '') errors.push('SMTP_PASS is required when EMAIL_TRANSPORT=smtp.');
   }
   if (env.STORAGE_PROVIDER === 's3') {
     if ((env.S3_BUCKET ?? '').trim() === '') errors.push('S3_BUCKET is required when STORAGE_PROVIDER=s3.');

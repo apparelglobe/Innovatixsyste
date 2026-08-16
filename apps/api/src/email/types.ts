@@ -16,10 +16,10 @@ export type EmailMessage = {
 
 export type EmailSendResult = {
   providerMessageId: string | null;
-  transport: 'outbox' | 'postmark';
+  transport: 'outbox' | 'postmark' | 'smtp';
 };
 
 export interface EmailTransport {
-  readonly name: 'outbox' | 'postmark';
+  readonly name: 'outbox' | 'postmark' | 'smtp';
   send(msg: EmailMessage): Promise<EmailSendResult>;
 }
