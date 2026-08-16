@@ -7,7 +7,8 @@ import { AdminShell } from '@/components/AdminShell';
 import { ProposalStatusRail } from '@/components/ProposalStatusRail';
 import { useStaff, staffCan } from '@/lib/useStaff';
 import { api, apiJson } from '@/lib/portal-api';
-import { fmtMoney, fmtDate } from '@/lib/fmt';
+import { fmtMoney } from '@/lib/fmt';
+import { Timestamp } from '@/components/Timestamp';
 import { deriveStage, stageEvidence, STAGE, TONE_CLASS } from '@/lib/proposal-stage';
 
 const API_BASE = process.env.NEXT_PUBLIC_PORTAL_API_URL || 'http://localhost:4040/v1';
@@ -151,7 +152,7 @@ export default function ProposalDetailPage() {
               <a href={`/admin/projects/${p.projectId}`} className="font-semibold text-emerald-300 hover:underline">View project →</a>
             )}
             <span className="ml-auto text-xs text-neutral-500">
-              {activated && p.activatedAt ? `Activated ${fmtDate(p.activatedAt)}` : p.acceptedAt ? `Accepted ${fmtDate(p.acceptedAt)}` : p.sentAt ? `Sent ${fmtDate(p.sentAt)}` : ''}
+              {activated && p.activatedAt ? <>Activated <Timestamp value={p.activatedAt} /></> : p.acceptedAt ? <>Accepted <Timestamp value={p.acceptedAt} /></> : p.sentAt ? <>Sent <Timestamp value={p.sentAt} /></> : ''}
             </span>
           </div>
         )}

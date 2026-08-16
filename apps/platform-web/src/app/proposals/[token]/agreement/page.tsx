@@ -6,6 +6,7 @@ import { Loader2, ArrowRight, Download, PenLine, CheckCircle2 } from 'lucide-rea
 import { api, apiJson } from '@/lib/portal-api';
 import { ProposalShell, ProposalLoading, ProposalTerminal, ProposalSteps } from '@/components/proposal-ui';
 import { STAGE } from '@/lib/proposal-stage';
+import { Timestamp } from '@/components/Timestamp';
 
 const API_BASE = process.env.NEXT_PUBLIC_PORTAL_API_URL || 'http://localhost:4040/v1';
 
@@ -97,6 +98,11 @@ export default function AgreementPage() {
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
               <p className="flex items-center gap-2 font-semibold text-emerald-100"><CheckCircle2 size={18} /> {(depositPaid ? STAGE.PAID : STAGE.SIGNED).prospectTitle}</p>
               <p className="mt-1 text-sm text-neutral-300">{(depositPaid ? STAGE.PAID : STAGE.SIGNED).prospectBody}</p>
+              {contract.signedAt && (
+                <p className="mt-2 text-xs text-emerald-200/70">
+                  Signed <Timestamp value={contract.signedAt} withTime withZone className="font-medium text-emerald-100" />
+                </p>
+              )}
             </div>
             <button onClick={() => router.push(`/proposals/${encodeURIComponent(token)}/deposit`)} className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
               {depositPaid ? 'View confirmation' : 'Continue to deposit'} <ArrowRight size={18} />

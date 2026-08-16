@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CheckCircle2, CircleDot, Circle, Loader2, FileText } from 'lucide-react';
 import { PortalShell } from '@/components/PortalShell';
 import { api, apiJson } from '@/lib/portal-api';
+import { fmtDate } from '@/lib/fmt';
 
 type Overview = {
   project: null | {
@@ -19,7 +20,6 @@ type Overview = {
   };
 };
 
-const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
 const STATUS_LABEL: Record<string, string> = { DISCOVERY: 'Discovery', IN_PROGRESS: 'In Progress', UAT: 'UAT', LAUNCHED: 'Launched', ON_HOLD: 'On Hold', COMPLETE: 'Complete' };
 
 export default function OverviewPage() {
