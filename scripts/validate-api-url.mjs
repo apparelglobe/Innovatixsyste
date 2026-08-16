@@ -21,7 +21,20 @@ const enforce =
   !!process.env.VERCEL ||
   process.env.INNOVATIX_ENFORCE_API_URL === '1';
 
-const raw = (process.env[varName] ?? '').trim();
+// The value lives in the app's .env.local (where Next reads NEXT_PUBLIC_* at build).
+// A plain node prebuild doesn't auto-load it, so read the same files Next does.
+import { readFileSync } from 'node:fs';
+function fromEnvFiles(name) {
+  for (const f of ['.env.local', '.env.production', '.env']) {
+    try {
+      const m = readFileSync(f, 'utf8').match(new RegExp('^' + name + '=(.*)$', 'm'));
+      if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+    } catch { /* file absent — try next */ }
+  }
+  return undefined;
+}
+
+const raw = (process.env[varName] ?? fromEnvFiles(varName) ?? '').trim();
 const isLocal = (s) => /localhost|127\.0\.0\.1|0\.0\.0\.0|::1/i.test(s);
 
 const fail = (m) => {

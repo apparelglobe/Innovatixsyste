@@ -55,6 +55,9 @@ ssh "$HOST" "set -euo pipefail
   # so the new code never queries a schema that hasn't caught up. Both are idempotent (no-op
   # when nothing changed). Reads the prod DATABASE_URL from apps/api/.env.
   ( cd apps/api && npx prisma generate && npx prisma migrate deploy )
+  # Enforce the build-time guards on the real deploy: fail the build if a frontend's
+  # browser API base is localhost/unset, or the marketing site URL is localhost/unset.
+  export INNOVATIX_ENFORCE_API_URL=1 INNOVATIX_ENFORCE_SITE_URL=1
   npm run build                 # turbo build → apps/{systems-web,platform-web}/.next
   pm2 restart innovatix-systems-web innovatix-portal innovatix-api innovatix-worker --update-env
   pm2 save
