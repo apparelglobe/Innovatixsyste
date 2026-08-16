@@ -14,7 +14,25 @@ const enforce =
   !!process.env.VERCEL ||
   process.env.INNOVATIX_ENFORCE_SITE_URL === '1';
 
-const raw = (process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL)?.trim();
+// The value lives in .env.local (where Next reads NEXT_PUBLIC_* at build); a plain
+// node prebuild doesn't auto-load it, so read the same files Next does.
+import { readFileSync } from 'node:fs';
+function fromEnvFiles(name) {
+  for (const f of ['.env.local', '.env.production', '.env']) {
+    try {
+      const m = readFileSync(f, 'utf8').match(new RegExp('^' + name + '=(.*)$', 'm'));
+      if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+    } catch { /* file absent — try next */ }
+  }
+  return undefined;
+}
+
+const raw = (
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  process.env.SITE_URL ??
+  fromEnvFiles('NEXT_PUBLIC_SITE_URL') ??
+  fromEnvFiles('SITE_URL')
+)?.trim();
 
 function isLocalHost(hostname) {
   const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
