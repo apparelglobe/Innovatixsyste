@@ -100,7 +100,7 @@ export default function AgreementPage() {
               <p className="mt-1 text-sm text-neutral-300">{(depositPaid ? STAGE.PAID : STAGE.SIGNED).prospectBody}</p>
               {contract.signedAt && (
                 <p className="mt-2 text-xs text-emerald-200/70">
-                  Signed <Timestamp value={contract.signedAt} withTime withZone className="font-medium text-emerald-100" />
+                  Signed <Timestamp value={contract.signedAt} withTime withYear withZone className="font-medium text-emerald-100" />
                 </p>
               )}
             </div>

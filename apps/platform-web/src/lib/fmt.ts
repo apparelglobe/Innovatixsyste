@@ -15,6 +15,12 @@ export const fmtDate = (d?: string | null) =>
 export const fmtDateTime = (d?: string | null) =>
   d ? new Date(d).toLocaleString('en-US', { timeZone: DISPLAY_TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
 
+// Full timestamp WITH the year — for legally-meaningful surfaces (a signed agreement) where an
+// undated year is exactly the ambiguity you don't want. The terser fmtDateTime (no year) stays
+// the default for chat/notification/audit rows where the year is just noise.
+export const fmtDateTimeFull = (d?: string | null) =>
+  d ? new Date(d).toLocaleString('en-US', { timeZone: DISPLAY_TZ, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+
 // The precise instant (UTC, to the second) for a `title` tooltip on a rendered date — keeps
 // the ground truth that the pinned display date rounds away. Empty string for null/invalid.
 export const isoTitle = (d?: string | null) => {
