@@ -3,10 +3,10 @@
 > **The route we follow, and the record of everything we build.**
 > Companion to [`PROJECT-CANON.md`](./PROJECT-CANON.md) — the canon says *what & why*; this file says *in what order*, and (once we start) *what was actually built*.
 
-**Status: 🚀 PHASE 1 BACKEND LIVE ON PROD · UI BUILT (build-verified, not yet deployed) — 2026-08-14.**
-The activation gate (proposal → accept → sign → deposit → activate) is built and verified. **Backend + DB schema are live on prod** — 4 migrations applied, api + worker restarted, `/health` 200; the **61-service catalog is seeded on prod** (catalog-only). The **Phase 1 UI is now built** — prospect pages (review/accept/sign/pay) + staff proposal builder (list/new/detail/send) — and passes `tsc` + a full `next build` (20/20 routes). **Still pending:** deploy the UI to prod, and confirm prod payment mode (stub vs live Stripe) before the pay page goes live. Nothing is chargeable until the UI ships.
+**Status: ✅ PHASE 1 FULLY LIVE ON PROD · UI DEPLOYED + END-TO-END TESTED — 2026-08-16. Only deposit→activation is gated on Stripe (deferred).**
+The activation gate (proposal → accept → sign → deposit → activate) is built, **deployed, and end-to-end tested on prod**. Backend + DB schema live (migrations applied, api+worker running, `/health` 200); the **61-service catalog seeded** (catalog-only); the **Phase 1 UI is live on prod** — prospect pages (review/accept/sign/pay) + staff proposal builder (list/new/detail/send). A full prod E2E passed: lead → staff send → **SMTP email delivered** → prospect review → accept → **sign**. **Only remaining gap:** deposit → activation, gated on `PAYMENTS_PROVIDER=stub` — **Stripe wiring deferred by choice (2026-08-16)**; nothing chargeable until it's wired.
 
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-16
 
 ---
 
@@ -130,6 +130,16 @@ Phase 5  AI + scheduling +    →  stronger funnel & polish
 - Status: in progress | done | verified
 - Notes: <decisions, deviations, follow-ups>
 ```
+
+### 2026-08-16 — DEPLOY: Phase 1 UI → production + full prod end-to-end test ✅
+- **Shipped to prod:** both frontends rebuilt + deployed via `./scripts/deploy.sh` (rsync → box → `npm install` + `prisma generate` + `prisma migrate deploy` + `turbo build` + `pm2 restart` of api / portal / systems-web / worker). Portal (`app.innovatixmarketing.com`) + marketing (`innovatixmarketing.com`), both HTTP 200. No pending migrations (schema already live from the 08-14 backend deploy).
+- **Fixed the launch-blocker:** both frontends had been built with the browser API base still `http://localhost:4040`, so no visitor's browser could reach the API (dead on step one). Now baked from `.env.local` on the box — **portal same-origin `/v1`**, **marketing cross-origin `https://app.innovatixmarketing.com/v1`** (CORS-allowed). Added **build-time guards** (`scripts/validate-api-url.mjs`, `systems-web/scripts/validate-site-url.mjs`) that **fail the build** if the API/site base is localhost/unset, wired through `turbo.json` `passThroughEnv` so they actually enforce on deploy (Turbo sandboxes env otherwise).
+- **Email live for real:** `EMAIL_TRANSPORT=smtp` via Google Workspace, sender `proposals@innovatixmarketing.com`. New `SmtpTransport` (nodemailer). Confirmed delivering — the `PROPOSAL_SENT` email (inline) **and** the `LEAD_ACK` email (worker/async) both landed in a real inbox.
+- **Full prod E2E — PASS:** lead form → `POST /v1/leads` **202** (no localhost, clean console) → staff login/build/send (**PROP-0001**) → SMTP email delivered with the review link → prospect **review** → **accept** (AGR-0001) → **sign**. Every stage verified on both the prospect and admin sides; admin timeline Draft → Sent → Viewed → Accepted → Signed.
+- **Date formatting fix:** portal dates rendered in the *viewer's* browser timezone (a 22:49 UTC "sent" showed as the next calendar day for viewers east of UTC — two people read different dates off one record). Pinned all display dates to **`America/New_York`** via a single constant in `platform-web/src/lib/fmt.ts`; added a `Timestamp` component (precise instant on hover + machine-readable `<time>`), an **"(ET)" label + year** on the signed agreement. Verified from a UTC+2 browser now showing the correct ET date.
+- **Deferred by choice — deposit → activation:** prod runs `PAYMENTS_PROVIDER=stub` + `NODE_ENV=production`, so the inline-settle path is code-disabled (`deposits/service.ts`) and "Pay deposit" redirects to a login-gated `/pay` the not-yet-onboarded prospect can't use → no ClientOrg/Project past "signed." Needs Stripe (`PAYMENTS_PROVIDER=stripe` + `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`, webhook authoritative for `PAID` → `activateFromDeposit`). **User deferred Stripe on 2026-08-16.**
+- **Status:** ✅ **Phase 1 fully live + prod-tested through "Agreement signed."** Everything except the deposit works on prod. Git: branch `feat/phase-1-activation-gate`, all committed + pushed.
+- **Next:** wire Stripe when ready to charge; then re-run the prod E2E through deposit → activation in Stripe test mode before going live.
 
 ### 2026-08-14 — Phase 1 · UI: prospect flow + staff proposal builder
 - **Built:** the entire user-facing half of the activation gate, in platform-web's dark house theme — reusing the `portal-api` client, the `setup-account` public-token pattern, `fmt.ts`, and `AdminShell`.
