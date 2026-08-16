@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 4030",
-    "validate": "node scripts/validate-site-url.mjs && tsx scripts/validate-content-qc.mts",
+    "validate": "node ../../scripts/validate-api-url.mjs NEXT_PUBLIC_API_BASE_URL && node scripts/validate-site-url.mjs && tsx scripts/validate-content-qc.mts",
     "prebuild": "npm run validate",
     "build": "next build",
     "start": "next start -p 4030",

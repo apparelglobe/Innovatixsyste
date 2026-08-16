@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
+    "prebuild": "node ../../scripts/validate-api-url.mjs NEXT_PUBLIC_PORTAL_API_URL",
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint",
