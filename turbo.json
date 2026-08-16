@@ -4,7 +4,6 @@
     "build": {
       "dependsOn": ["^build"],
       "env": ["SITE_URL", "NODE_ENV"],
-      "//": "Deploy enforces the localhost guards via these flags — Turbo sandboxes env, so they must be declared here or the prebuild scripts never see them (they printed 'enforcement off' otherwise). .env.local/.env.production/.env are inputs so an env-only change (e.g. the browser API base) invalidates the cache and forces a rebuild instead of a cache-hit shipping a stale bundle.",
       "passThroughEnv": ["INNOVATIX_ENFORCE_API_URL", "INNOVATIX_ENFORCE_SITE_URL"],
       "inputs": ["$TURBO_DEFAULT$", ".env.local", ".env.production", ".env"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
