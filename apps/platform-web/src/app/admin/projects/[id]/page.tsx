@@ -128,6 +128,14 @@ export default function AdminProjectPage() {
                   <input disabled={!can('project:write')} type="number" min={0} max={100} defaultValue={p.percentComplete} onBlur={(e) => act('PATCH', `/admin/projects/${id}`, { percentComplete: Number(e.target.value) })} className={`${input} w-24`} />
                   <span className="self-center text-sm text-neutral-500">% complete</span>
                 </div>
+                <div className="mt-4 border-t border-line pt-4">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Next update to the client</h4>
+                  <p className="mt-1 text-xs text-neutral-500">While it&rsquo;s our turn, the client&rsquo;s workspace shows &ldquo;next update by this date.&rdquo; Set a real commitment; leave blank for none.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[auto_1fr]">
+                    <input disabled={!can('project:write')} type="date" defaultValue={p.nextUpdateAt ? new Date(p.nextUpdateAt).toISOString().slice(0, 10) : ''} onChange={(e) => act('PATCH', `/admin/projects/${id}`, { nextUpdateAt: e.target.value || null })} className={`${input} w-44`} />
+                    <input disabled={!can('project:write')} defaultValue={p.nextUpdateNote ?? ''} maxLength={280} placeholder="Optional note (e.g. demo build ready)" onBlur={(e) => act('PATCH', `/admin/projects/${id}`, { nextUpdateNote: e.target.value.trim() || null })} className={input} />
+                  </div>
+                </div>
                 {!can('project:write') && <p className="mt-2 text-xs text-neutral-500">Read-only for your role.</p>}
               </div>
             </div>

@@ -138,6 +138,8 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         status: project.status,
         percentComplete: project.percentComplete,
         dueDate: project.dueDate,
+        nextUpdateAt: project.nextUpdateAt,
+        nextUpdateNote: project.nextUpdateNote,
         milestonesDone,
         milestonesTotal: project.milestones.length,
         openApprovals: project.approvals.length,

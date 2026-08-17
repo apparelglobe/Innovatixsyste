@@ -421,6 +421,8 @@ model Project {
   percentComplete Int           @default(0)
   startDate       DateTime?
   dueDate         DateTime?
+  nextUpdateAt    DateTime?     // Phase 2: staff-committed "Our turn — next update by" date (client-facing)
+  nextUpdateNote  String?       // Phase 2: optional short note shown alongside the next-update date
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

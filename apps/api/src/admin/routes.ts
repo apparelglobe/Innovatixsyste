@@ -139,10 +139,13 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/admin/projects/:id', async (req, reply) => {
     const ctx = await requireStaff(req, reply, 'project:write'); if (!ctx) return;
     const p = await scopedProject(ctx.tenantId, (req.params as { id: string }).id); if (!p) return reply.code(404).send({ ok: false });
-    const b = z.object({ name: z.string().trim().min(1).max(200).optional(), status: z.enum(['DISCOVERY', 'IN_PROGRESS', 'UAT', 'LAUNCHED', 'ON_HOLD', 'COMPLETE']).optional(), percentComplete: z.number().int().min(0).max(100).optional(), dueDate: z.string().nullable().optional() }).safeParse(req.body);
+    const b = z.object({ name: z.string().trim().min(1).max(200).optional(), status: z.enum(['DISCOVERY', 'IN_PROGRESS', 'UAT', 'LAUNCHED', 'ON_HOLD', 'COMPLETE']).optional(), percentComplete: z.number().int().min(0).max(100).optional(), dueDate: z.string().nullable().optional(), nextUpdateAt: z.string().nullable().optional(), nextUpdateNote: z.string().max(280).nullable().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
     const statusChanged = b.data.status && b.data.status !== p.status;
-    await prisma.project.update({ where: { id: p.id }, data: { ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.status ? { status: b.data.status } : {}), ...(b.data.percentComplete != null ? { percentComplete: b.data.percentComplete } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } : {}) } });
+    // A date-only "next update" (YYYY-MM-DD) is pinned to noon UTC so it renders as the chosen
+    // calendar day in ET (America/New_York) rather than slipping to the day before at midnight.
+    const nextUpdate = b.data.nextUpdateAt ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(b.data.nextUpdateAt) ? `${b.data.nextUpdateAt}T12:00:00Z` : b.data.nextUpdateAt) : null;
+    await prisma.project.update({ where: { id: p.id }, data: { ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.status ? { status: b.data.status } : {}), ...(b.data.percentComplete != null ? { percentComplete: b.data.percentComplete } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } : {}), ...(b.data.nextUpdateAt !== undefined ? { nextUpdateAt: nextUpdate } : {}), ...(b.data.nextUpdateNote !== undefined ? { nextUpdateNote: b.data.nextUpdateNote ? cleanText(b.data.nextUpdateNote, 280) : null } : {}) } });
     await audit(ctx.tenantId, ctx.session.sub, 'Project', p.id, 'PROJECT_UPDATED', b.data);
     if (statusChanged) {
       await activity(ctx.tenantId, p.id, 'STATUS', `Project status changed to ${b.data.status}`);
