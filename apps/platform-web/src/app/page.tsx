@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, CircleDot, Circle, Loader2, FileText } from 'lucide-react';
+import { CheckCircle2, CircleDot, Circle, Loader2, FileText, Clock, ArrowRight } from 'lucide-react';
 import { PortalShell } from '@/components/PortalShell';
 import { api, apiJson } from '@/lib/portal-api';
 import { fmtDate } from '@/lib/fmt';
+import { Timestamp } from '@/components/Timestamp';
+import { deriveWorkspaceState, type ProjectStatus } from '@/lib/workspace-stage';
+import { TONE_CLASS } from '@/lib/proposal-stage';
 
 type Overview = {
   project: null | {
     id: string; name: string; status: string; percentComplete: number; dueDate: string | null;
+    nextUpdateAt?: string | null; nextUpdateNote?: string | null;
     milestonesDone: number; milestonesTotal: number; openApprovals: number;
-    pendingApproval?: { id: string; subject: string };
+    pendingApproval?: { id: string; subject: string; type?: string | null };
+    payableInvoice?: { id: string; number: string; amountCents: number; overdue?: boolean } | null;
     nextMilestone?: { name: string; dueDate: string | null };
     milestones: { id: string; name: string; status: string; dueDate: string | null }[];
     latestReport?: { title: string; kind: string; summary: string; publishedAt: string };
@@ -19,8 +24,6 @@ type Overview = {
     team: { name: string; role: string }[];
   };
 };
-
-const STATUS_LABEL: Record<string, string> = { DISCOVERY: 'Discovery', IN_PROGRESS: 'In Progress', UAT: 'UAT', LAUNCHED: 'Launched', ON_HOLD: 'On Hold', COMPLETE: 'Complete' };
 
 export default function OverviewPage() {
   const router = useRouter();
@@ -40,7 +43,7 @@ export default function OverviewPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Only account OWNERs may decide approvals (the backend enforces this too).
+  // Only account OWNERs may decide approvals / pay (the backend enforces this too).
   const isOwner = me?.user.role === 'OWNER';
 
   async function decide(id: string, decision: 'APPROVED' | 'CHANGES_REQUESTED') {
@@ -57,72 +60,92 @@ export default function OverviewPage() {
     return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
   }
 
+  const firstName = me.user.firstName || '';
   const userName = [me.user.firstName, me.user.lastName].filter(Boolean).join(' ') || 'Client';
   const p = data.project;
+  const state = p ? deriveWorkspaceState({
+    projectStatus: p.status as ProjectStatus,
+    pendingApproval: p.pendingApproval ? { id: p.pendingApproval.id, subject: p.pendingApproval.subject, type: p.pendingApproval.type } : null,
+    payableInvoice: p.payableInvoice ?? null,
+    nextUpdateAt: p.nextUpdateAt,
+    nextUpdateNote: p.nextUpdateNote,
+  }) : null;
 
   return (
     <PortalShell orgName={me.org.name} userName={userName} active="overview">
-      <div className="mx-auto max-w-5xl">
-        <h1 className="text-2xl font-extrabold tracking-tight text-white">Overview</h1>
-        {!p ? (
-          <p className="mt-6 text-neutral-400">No active project yet. Your delivery team will set this up shortly.</p>
+      <div className="mx-auto max-w-4xl">
+        <p className="text-sm text-neutral-500">Welcome back{firstName ? `, ${firstName}` : ''}</p>
+
+        {!p || !state ? (
+          <div className="mt-4 rounded-2xl border border-line bg-surface p-6 text-neutral-400">
+            No active project yet. Your delivery team will set this up shortly.
+          </div>
         ) : (
-          <div className="mt-6 space-y-6">
-            {/* Project header */}
-            <div className="rounded-2xl border border-line bg-surface p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold text-white">{p.name}</h2>
-                    <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">{STATUS_LABEL[p.status] ?? p.status}</span>
-                  </div>
-                  <p className="mt-0.5 text-sm text-neutral-500">Due {fmtDate(p.dueDate)}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-extrabold text-white">{p.percentComplete}%</div>
-                  <div className="text-xs text-neutral-500">Complete</div>
-                </div>
+          <div className="mt-3 space-y-6">
+            {/* ── The one status card: what's happening + the one next action ── */}
+            <section className={`rounded-2xl border p-6 ${state.turn === 'YOU' ? 'border-primary/40 bg-primary/[0.06]' : 'border-line bg-surface'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${TONE_CLASS[state.tone]}`}>{state.statusLabel}</span>
+                <span className="text-sm font-medium text-neutral-400">{p.name}</span>
               </div>
-              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                <div className="h-full rounded-full bg-brand-gradient" style={{ width: `${p.percentComplete}%` }} />
-              </div>
-              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <Stat value={`${p.milestonesDone}/${p.milestonesTotal}`} label="Milestones" />
-                <Stat value={String(p.openApprovals)} label="Open approvals" />
-                <Stat value={p.nextMilestone?.name ?? '—'} label="Next milestone" small />
-              </div>
-            </div>
 
-            {/* Pending approval action */}
-            {p.pendingApproval && (
-              <div className="rounded-2xl border border-primary/30 bg-primary/[0.06] p-5">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-widest text-primary-light">Action needed</div>
-                  <p className="mt-1 font-semibold text-white">{p.pendingApproval.subject}</p>
-                </div>
-                {isOwner ? (
-                  <>
-                    <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000}
-                      placeholder="Add a note (optional) — shared with the delivery team"
-                      className="mt-3 w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
-                    <div className="mt-3 flex justify-end gap-2">
-                      <button disabled={deciding} onClick={() => decide(p.pendingApproval!.id, 'CHANGES_REQUESTED')}
-                        className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Request changes</button>
-                      <button disabled={deciding} onClick={() => decide(p.pendingApproval!.id, 'APPROVED')}
-                        className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Approve</button>
-                    </div>
-                    {decideError && <p className="mt-2 text-right text-xs text-red-400">{decideError}</p>}
-                  </>
-                ) : (
-                  <p className="mt-3 text-sm text-amber-400/90">Only an account owner can approve or request changes. Ask an owner on your team to review this.</p>
-                )}
-              </div>
-            )}
+              <h1 className="mt-3 text-xl font-extrabold tracking-tight text-white">{state.title}</h1>
+              <p className="mt-1.5 text-sm leading-relaxed text-neutral-300">{state.body}</p>
 
+              {/* Our turn — the next-update promise (renders nothing when no date is set) */}
+              {state.nextUpdate && (
+                <p className="mt-3 inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-neutral-200">
+                  <Clock size={15} className="text-primary-light" />
+                  Next update by <Timestamp value={state.nextUpdate.at} withZone className="font-semibold text-white" />
+                  {state.nextUpdate.note && <span className="text-neutral-400">· {state.nextUpdate.note}</span>}
+                </p>
+              )}
+
+              {/* Your turn — the one next action */}
+              {state.action && (
+                <div className="mt-4">
+                  {state.action.ownerOnly && !isOwner ? (
+                    <p className="text-sm text-amber-400/90">
+                      Only an account owner can {state.action.kind === 'invoice' ? 'pay this' : 'approve this'}. Ask an owner on your team to take a look.
+                    </p>
+                  ) : state.action.kind === 'approval' ? (
+                    <>
+                      <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000}
+                        placeholder="Add a note (optional) — shared with the delivery team"
+                        className="w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button disabled={deciding} onClick={() => decide(state.action!.targetId, 'CHANGES_REQUESTED')}
+                          className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Request changes</button>
+                        <button disabled={deciding} onClick={() => decide(state.action!.targetId, 'APPROVED')}
+                          className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{state.action.label}</button>
+                      </div>
+                      {decideError && <p className="mt-2 text-right text-xs text-red-400">{decideError}</p>}
+                    </>
+                  ) : state.action.href ? (
+                    <a href={state.action.href}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
+                      {state.action.label} <ArrowRight size={15} />
+                    </a>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Delivery progress at a glance */}
+              <div className="mt-5 border-t border-line pt-4">
+                <div className="flex items-center justify-between text-xs text-neutral-500">
+                  <span>{p.milestonesDone}/{p.milestonesTotal} milestones{p.nextMilestone ? ` · next: ${p.nextMilestone.name}` : ''}</span>
+                  <span className="font-semibold text-neutral-300">{p.percentComplete}%</span>
+                </div>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                  <div className="h-full rounded-full bg-brand-gradient" style={{ width: `${p.percentComplete}%` }} />
+                </div>
+              </div>
+            </section>
+
+            {/* ── Project details (subordinate; relocated under Projects in S5) ── */}
             <div className="grid gap-6 lg:grid-cols-2">
-              {/* Milestone timeline */}
               <div className="rounded-2xl border border-line bg-surface p-6">
-                <h3 className="text-sm font-bold text-white">Milestone timeline</h3>
+                <h3 className="text-sm font-bold text-white">Milestones</h3>
                 <ul className="mt-4 space-y-3">
                   {p.milestones.map((m) => (
                     <li key={m.id} className="flex items-center gap-2.5 text-sm">
@@ -136,7 +159,6 @@ export default function OverviewPage() {
                 </ul>
               </div>
 
-              {/* Activity feed */}
               <div className="rounded-2xl border border-line bg-surface p-6">
                 <h3 className="text-sm font-bold text-white">Recent activity</h3>
                 <ul className="mt-4 space-y-3.5">
@@ -153,7 +175,6 @@ export default function OverviewPage() {
               </div>
             </div>
 
-            {/* Latest report */}
             {p.latestReport && (
               <div className="rounded-2xl border border-line bg-surface p-6">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary-light">
@@ -165,7 +186,6 @@ export default function OverviewPage() {
               </div>
             )}
 
-            {/* Team */}
             <div className="rounded-2xl border border-line bg-surface p-6">
               <h3 className="text-sm font-bold text-white">Your delivery team</h3>
               <div className="mt-4 flex flex-wrap gap-4">
@@ -186,14 +206,5 @@ export default function OverviewPage() {
         )}
       </div>
     </PortalShell>
-  );
-}
-
-function Stat({ value, label, small }: { value: string; label: string; small?: boolean }) {
-  return (
-    <div className="rounded-xl border border-line bg-base/40 px-4 py-3">
-      <div className={`font-bold text-white ${small ? 'text-sm' : 'text-lg'}`}>{value}</div>
-      <div className="mt-0.5 text-xs text-neutral-500">{label}</div>
-    </div>
   );
 }

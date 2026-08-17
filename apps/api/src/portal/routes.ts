@@ -122,6 +122,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         members: true,
         reports: { orderBy: { publishedAt: 'desc' }, take: 1 },
         approvals: { where: { status: 'PENDING' } },
+        invoices: { where: { status: { in: ['SENT', 'OVERDUE'] } }, orderBy: { dueAt: 'asc' }, take: 1 },
         activities: { orderBy: { createdAt: 'desc' }, take: 6 },
       },
     });
@@ -129,6 +130,10 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
 
     const milestonesDone = project.milestones.filter((m) => m.status === 'DONE').length;
     const nextMilestone = project.milestones.find((m) => m.status !== 'DONE') ?? null;
+    // The one payable invoice (oldest unpaid) — feeds the workspace "Pay invoice" next-action.
+    // OVERDUE is computed here since the stored status isn't swept from a due date server-side.
+    const inv = project.invoices[0] ?? null;
+    const payableInvoice = inv ? { id: inv.id, number: inv.number, amountCents: inv.amountCents, overdue: inv.status === 'OVERDUE' || (inv.dueAt ? new Date(inv.dueAt).getTime() < Date.now() : false) } : null;
 
     return reply.send({
       ok: true,
@@ -143,7 +148,8 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         milestonesDone,
         milestonesTotal: project.milestones.length,
         openApprovals: project.approvals.length,
-        pendingApproval: project.approvals[0] && { id: project.approvals[0].id, subject: project.approvals[0].subject },
+        pendingApproval: project.approvals[0] && { id: project.approvals[0].id, subject: project.approvals[0].subject, type: project.approvals[0].type },
+        payableInvoice,
         nextMilestone: nextMilestone && { name: nextMilestone.name, dueDate: nextMilestone.dueDate },
         milestones: project.milestones.map((m) => ({ id: m.id, name: m.name, status: m.status, dueDate: m.dueDate })),
         latestReport: project.reports[0] && {
