@@ -14,6 +14,7 @@ import { hashAbuseIdentifier } from '../lib/crypto';
 import { checkRateLimit } from '../lib/ratelimit';
 import { normalizeEmail, cleanText, cleanMultiline } from '../lib/sanitize';
 import { parseDateInput } from '../lib/dates';
+import { MOMENT, MOMENT_MESSAGE } from '../lib/relationship-moments';
 import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPassword } from '../staff/auth';
 import { can, type Action } from '../staff/rbac';
 import { notifyClientOrg } from '../notifications/service';
@@ -156,6 +157,9 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     await audit(ctx.tenantId, ctx.session.sub, 'Project', p.id, 'PROJECT_UPDATED', b.data);
     if (statusChanged) {
       await activity(ctx.tenantId, p.id, 'STATUS', `Project status changed to ${b.data.status}`);
+      // S4: the curated "Project launched" relationship moment (the raw STATUS row above stays for
+      // the internal/admin log; the client timeline shows only this curated one).
+      if (b.data.status === 'LAUNCHED') await activity(ctx.tenantId, p.id, MOMENT.PROJECT_LAUNCHED, MOMENT_MESSAGE[MOMENT.PROJECT_LAUNCHED]);
       await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'PROJECT_STATUS_CHANGED', title: `Project status: ${b.data.status}`, projectId: p.id, linkPath: '/', email: true });
     }
     return reply.send({ ok: true });

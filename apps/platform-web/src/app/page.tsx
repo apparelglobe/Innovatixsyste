@@ -9,6 +9,7 @@ import { fmtDate } from '@/lib/fmt';
 import { Timestamp } from '@/components/Timestamp';
 import { deriveWorkspaceState, type ProjectStatus } from '@/lib/workspace-stage';
 import { TONE_CLASS } from '@/lib/proposal-stage';
+import { MOMENT_META, MOMENT_FALLBACK } from '@/lib/relationship-moment';
 
 type Overview = {
   project: null | {
@@ -146,20 +147,7 @@ export default function OverviewPage() {
                 </ul>
               </div>
 
-              <div className="rounded-2xl border border-line bg-surface p-6">
-                <h3 className="text-sm font-bold text-white">Recent activity</h3>
-                <ul className="mt-4 space-y-3.5">
-                  {p.activities.map((a, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm">
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary-light" />
-                      <div>
-                        <div className="text-neutral-200">{a.message}</div>
-                        <div className="text-xs text-neutral-600">{fmtDate(a.createdAt)}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <RelationshipTimeline moments={p.activities} />
             </div>
 
             {p.latestReport && (
@@ -232,5 +220,48 @@ function ApprovalPanel({ targetId, label, onDecided }: { targetId: string; label
       </div>
       {err && <p className="mt-2 text-right text-xs text-red-400">{err}</p>}
     </>
+  );
+}
+
+/**
+ * S4 — the curated relationship timeline (Canon §6 allow-list). Shows the latest few meaningful
+ * moments by default (newest-first); "View full timeline" expands in place to the whole story,
+ * oldest → newest. The API already filters to curated moment types, so anything here is meaningful.
+ */
+function RelationshipTimeline({ moments }: { moments: { type: string; message: string; createdAt: string }[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const DEFAULT_N = 4;
+  const shown = expanded ? [...moments].reverse() : moments.slice(0, DEFAULT_N);
+
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-6">
+      <h3 className="text-sm font-bold text-white">Relationship timeline</h3>
+      {moments.length === 0 ? (
+        <p className="mt-4 text-sm text-neutral-500">The milestones of your relationship with Innovatix will appear here as they happen.</p>
+      ) : (
+        <>
+          <ul className="mt-4 space-y-3.5">
+            {shown.map((m, i) => {
+              const meta = MOMENT_META[m.type] ?? MOMENT_FALLBACK;
+              const Icon = meta.icon;
+              return (
+                <li key={`${m.type}-${m.createdAt}-${i}`} className="flex items-start gap-3 text-sm">
+                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${TONE_CLASS[meta.tone]}`}><Icon size={13} /></span>
+                  <div>
+                    <div className="text-neutral-200">{m.message}</div>
+                    <div className="text-xs text-neutral-600">{fmtDate(m.createdAt)}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {moments.length > DEFAULT_N && (
+            <button type="button" onClick={() => setExpanded((v) => !v)} className="mt-4 text-xs font-semibold text-primary-light hover:underline">
+              {expanded ? 'Show recent only' : `View full timeline (${moments.length})`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }

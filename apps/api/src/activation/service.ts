@@ -11,11 +11,12 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import { convertLead, createEngagementProject } from '../admin/conversion';
+import { MOMENT, MOMENT_MESSAGE, BACKFILL_MOMENT_TYPES } from '../lib/relationship-moments';
 
 export async function activateFromDeposit(prisma: PrismaClient, invoiceId: string): Promise<void> {
   const inv = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    include: { proposal: { select: { id: true, leadId: true, title: true, number: true, createdByStaffUserId: true, clientOrgId: true } } },
+    include: { proposal: { select: { id: true, leadId: true, title: true, number: true, createdByStaffUserId: true, clientOrgId: true, sentAt: true, acceptedAt: true } } },
   });
   if (!inv || inv.kind !== 'DEPOSIT' || !inv.proposal) return;
   if (inv.proposal.clientOrgId) return; // already activated
@@ -59,4 +60,20 @@ export async function activateFromDeposit(prisma: PrismaClient, invoiceId: strin
   await prisma.invoice.update({ where: { id: inv.id }, data: { clientOrgId: result.clientOrgId, projectId } });
   await prisma.payment.updateMany({ where: { invoiceId: inv.id }, data: { clientOrgId: result.clientOrgId } });
   await prisma.auditEvent.create({ data: { tenantId: inv.tenantId, entityType: 'Proposal', entityId: inv.proposal.id, action: 'ACTIVATED', actorType: 'SYSTEM', data: { clientOrgId: result.clientOrgId, projectId, invitedEmail: result.invitedEmail, returningClient: result.alreadyConverted } } });
+
+  // S4: back-date the curated relationship-timeline moments onto the new project. The client had no
+  // portal login until now, so the pre-project arc (proposal sent → accepted → agreement signed →
+  // activation payment received → project started) is recorded retrospectively with real timestamps.
+  // Idempotent: clear any prior backfilled moments for this project, then re-insert.
+  if (projectId) {
+    const contract = await prisma.contract.findFirst({ where: { proposalId: inv.proposal.id, tenantId: inv.tenantId }, select: { signedAt: true } });
+    const moments: { type: string; message: string; createdAt: Date }[] = [];
+    if (inv.proposal.sentAt) moments.push({ type: MOMENT.PROPOSAL_SENT, message: MOMENT_MESSAGE[MOMENT.PROPOSAL_SENT], createdAt: inv.proposal.sentAt });
+    if (inv.proposal.acceptedAt) moments.push({ type: MOMENT.PROPOSAL_ACCEPTED, message: MOMENT_MESSAGE[MOMENT.PROPOSAL_ACCEPTED], createdAt: inv.proposal.acceptedAt });
+    if (contract?.signedAt) moments.push({ type: MOMENT.AGREEMENT_SIGNED, message: MOMENT_MESSAGE[MOMENT.AGREEMENT_SIGNED], createdAt: contract.signedAt });
+    if (inv.paidAt) moments.push({ type: MOMENT.ACTIVATION_PAYMENT_RECEIVED, message: MOMENT_MESSAGE[MOMENT.ACTIVATION_PAYMENT_RECEIVED], createdAt: inv.paidAt });
+    moments.push({ type: MOMENT.PROJECT_STARTED, message: MOMENT_MESSAGE[MOMENT.PROJECT_STARTED], createdAt: now });
+    await prisma.portalActivity.deleteMany({ where: { projectId, type: { in: BACKFILL_MOMENT_TYPES } } });
+    await prisma.portalActivity.createMany({ data: moments.map((m) => ({ tenantId: inv.tenantId, projectId, type: m.type, message: m.message, createdAt: m.createdAt })) });
+  }
 }

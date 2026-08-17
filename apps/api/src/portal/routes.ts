@@ -13,6 +13,7 @@ import { checkRateLimit } from '../lib/ratelimit';
 import { normalizeEmail, cleanMultiline, cleanText } from '../lib/sanitize';
 import { enrichApprovals } from '../lib/approvals';
 import { isInvoiceOverdue } from '../lib/invoice-status';
+import { MOMENT, MOMENT_MESSAGE, CURATED_MOMENT_TYPES } from '../lib/relationship-moments';
 import { enrichInvoice } from '../lib/invoices';
 import { renderInvoicePdfFrom } from '../billing';
 import { markInvoicePaid } from '../billing/mark-paid';
@@ -124,7 +125,9 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         reports: { orderBy: { publishedAt: 'desc' }, take: 1 },
         approvals: { where: { status: 'PENDING' } },
         invoices: { where: { status: { in: ['SENT', 'OVERDUE'] } }, orderBy: { dueAt: 'asc' }, take: 1 },
-        activities: { orderBy: { createdAt: 'desc' }, take: 6 },
+        // S4: the CLIENT relationship timeline shows curated moments only (Canon allow-list) — never
+        // raw system events. The full raw activity log stays on the admin project view.
+        activities: { where: { type: { in: CURATED_MOMENT_TYPES } }, orderBy: { createdAt: 'desc' }, take: 50 },
       },
     });
     if (!project) return reply.send({ ok: true, project: null });
@@ -390,7 +393,12 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       // The approval SERVICE is the only path that mutates the related object:
       // an APPROVED milestone approval marks the milestone DONE.
       ...(approved && approval.type === 'MILESTONE' && approval.milestoneId
-        ? [prisma.milestone.update({ where: { id: approval.milestoneId }, data: { status: 'DONE', completedAt: new Date() } })]
+        ? [
+            prisma.milestone.update({ where: { id: approval.milestoneId }, data: { status: 'DONE', completedAt: new Date() } }),
+            // S4: the curated "Milestone approved" relationship moment (the raw 'APPROVAL' row above
+            // stays for the internal/admin log; the client timeline shows only this curated one).
+            prisma.portalActivity.create({ data: { tenantId: ctx.session.tenant, projectId: approval.projectId, type: MOMENT.MILESTONE_APPROVED, message: `${MOMENT_MESSAGE[MOMENT.MILESTONE_APPROVED]}: ${approval.subject}` } }),
+          ]
         : []),
     ]);
     // Notify the delivery team of the client's decision.
