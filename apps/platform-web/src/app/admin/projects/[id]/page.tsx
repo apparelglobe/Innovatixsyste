@@ -27,9 +27,11 @@ export default function AdminProjectPage() {
 
   const load = useCallback(async () => {
     const r = await apiJson<{ project: any }>(`/admin/projects/${id}`);
-    setP(r.body.project);
+    // Only commit on success — a non-200 refetch must not null `p` and flip the page back to the
+    // loading state (which tears down and rebuilds the tab content).
+    if (r.status === 200) setP(r.body.project);
     const cu = await apiJson<{ users: any[] }>(`/admin/projects/${id}/client-users`);
-    setClientUsers(cu.body.users || []);
+    if (cu.status === 200) setClientUsers(cu.body.users || []);
   }, [id]);
   useEffect(() => { if (me) load(); }, [me, load]);
 
@@ -146,8 +148,8 @@ export default function AdminProjectPage() {
             <div className="space-y-3">
               {p.milestones.map((m: any) => (
                 <div key={m.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3">
-                  <div className="min-w-0 flex-1"><div className="font-semibold text-white">{m.name}</div><div className="text-xs text-neutral-500">due {fmtDate(m.dueDate)}</div></div>
-                  <select disabled={!can('milestone:write')} defaultValue={m.status} onChange={(e) => act('PATCH', `/admin/milestones/${m.id}`, { status: e.target.value })} className={`${input} w-40`}>{MS_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+                  <div className="min-w-0 flex-1"><div className="truncate font-semibold text-white">{m.name}</div><div className="text-xs text-neutral-500">due {fmtDate(m.dueDate)}</div></div>
+                  <select disabled={!can('milestone:write')} defaultValue={m.status} onChange={(e) => act('PATCH', `/admin/milestones/${m.id}`, { status: e.target.value })} className="w-36 shrink-0 rounded-lg border border-line-strong bg-white/[0.03] px-3 py-2 text-sm text-white">{MS_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}</select>
                 </div>
               ))}
               {can('milestone:write') && (
@@ -326,7 +328,7 @@ export default function AdminProjectPage() {
                 <div key={inv.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-3">
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-white">{inv.number}</div>
-                    <div className="text-xs text-neutral-500">{inv.status === 'PAID' ? `Paid ${fmtDate(inv.paidAt)}` : inv.dueAt ? `Due ${fmtDate(inv.dueAt)}` : 'No due date'}</div>
+                    <div className="text-xs text-neutral-500">{inv.status === 'VOIDED' ? 'Voided' : inv.status === 'PAID' ? `Paid ${fmtDate(inv.paidAt)}` : inv.dueAt ? `Due ${fmtDate(inv.dueAt)}` : 'No due date'}</div>
                   </div>
                   <div className="font-bold text-white">{fmtMoney(inv.amountCents, inv.currency)}</div>
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${inv.status === 'PAID' ? 'bg-emerald-400/15 text-emerald-300' : inv.status === 'OVERDUE' ? 'bg-red-500/15 text-red-300' : inv.status === 'SENT' ? 'bg-amber-400/15 text-amber-300' : inv.status === 'VOIDED' ? 'bg-white/5 text-neutral-500 line-through' : 'bg-white/10 text-neutral-300'}`}>{inv.status}</span>

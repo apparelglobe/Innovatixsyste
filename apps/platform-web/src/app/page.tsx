@@ -33,9 +33,12 @@ export default function OverviewPage() {
   const load = useCallback(async () => {
     const meRes = await apiJson<{ ok: boolean; user?: { firstName?: string; lastName?: string; role?: string }; org?: { name: string } }>('/portal/me');
     if (meRes.status === 401) { router.replace('/clientportal'); return; }
-    setMe({ user: meRes.body.user || {}, org: meRes.body.org || { name: '' } });
+    // Only commit on a real success. A non-200 refetch (e.g. right after a decide) must never
+    // null me/data — that flips the page back to the loading state and remounts the whole
+    // subtree mid-interaction, which drops the click and wipes child state.
+    if (meRes.status === 200) setMe({ user: meRes.body.user || {}, org: meRes.body.org || { name: '' } });
     const ov = await apiJson<Overview>('/portal/overview');
-    setData(ov.body);
+    if (ov.status === 200) setData(ov.body);
   }, [router]);
 
   useEffect(() => { load(); }, [load]);
@@ -43,13 +46,13 @@ export default function OverviewPage() {
   // Only account OWNERs may decide approvals / pay (the backend enforces this too).
   const isOwner = me?.user.role === 'OWNER';
 
-  if (!me || !data) {
-    return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
-  }
-
-  const firstName = me.user.firstName || '';
-  const userName = [me.user.firstName, me.user.lastName].filter(Boolean).join(' ') || 'Client';
-  const p = data.project;
+  // The shell mounts on the FIRST render and STAYS mounted — the loading spinner lives inside
+  // <main>, never in place of the whole tree. (Returning a bare full-screen spinner before data
+  // tore the shell + interactive subtree down and rebuilt it after the fetch; a click landing in
+  // that remount window was dropped and child state was reset.)
+  const firstName = me?.user.firstName || '';
+  const userName = me ? ([me.user.firstName, me.user.lastName].filter(Boolean).join(' ') || 'Client') : '';
+  const p = data?.project ?? null;
   const state = p ? deriveWorkspaceState({
     projectStatus: p.status as ProjectStatus,
     pendingApproval: p.pendingApproval ? { id: p.pendingApproval.id, subject: p.pendingApproval.subject, type: p.pendingApproval.type } : null,
@@ -59,8 +62,12 @@ export default function OverviewPage() {
   }) : null;
 
   return (
-    <PortalShell orgName={me.org.name} userName={userName} active="overview">
+    <PortalShell orgName={me?.org.name ?? ''} userName={userName} active="overview">
       <div className="mx-auto max-w-4xl">
+        {!me || !data ? (
+          <div className="grid place-items-center py-24 text-neutral-400"><Loader2 className="animate-spin" /></div>
+        ) : (
+          <>
         <p className="text-sm text-neutral-500">Welcome back{firstName ? `, ${firstName}` : ''}</p>
 
         {!p || !state ? (
@@ -183,6 +190,8 @@ export default function OverviewPage() {
               </div>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </PortalShell>
