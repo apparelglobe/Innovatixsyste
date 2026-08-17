@@ -10,7 +10,7 @@ import { fmtDate, fmtMoney } from '@/lib/fmt';
 
 type LineItem = { id: string; description: string; quantity: number; unitCents: number; amountCents: number; milestoneName: string | null };
 type Invoice = {
-  id: string; number: string; amountCents: number; currency: string; status: string;
+  id: string; number: string; amountCents: number; currency: string; status: string; overdue?: boolean;
   issuedAt: string | null; dueAt: string | null; paidAt: string | null;
   billingContactName: string | null; paymentUrl: string | null; pdfKey: string | null;
   lineItems: LineItem[];
@@ -21,6 +21,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   SENT: { label: 'Due', cls: 'bg-amber-400/15 text-amber-300' },
   OVERDUE: { label: 'Overdue', cls: 'bg-red-500/15 text-red-300' },
   DRAFT: { label: 'Draft', cls: 'bg-white/10 text-neutral-300' },
+  VOIDED: { label: 'Void', cls: 'bg-white/5 text-neutral-500 line-through' },
 };
 
 export default function InvoiceDetailPage() {
@@ -55,7 +56,7 @@ export default function InvoiceDetailPage() {
 
   if (loading || !me || inv === undefined) return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
 
-  const s = inv ? STATUS[inv.status] ?? { label: inv.status, cls: 'bg-white/10 text-neutral-300' } : null;
+  const s = inv ? STATUS[inv.overdue ? 'OVERDUE' : inv.status] ?? { label: inv.status, cls: 'bg-white/10 text-neutral-300' } : null;
 
   return (
     <PortalShell orgName={me.org.name} userName={userName} active="invoices">
@@ -127,7 +128,7 @@ export default function InvoiceDetailPage() {
             {inv.status !== 'DRAFT' && (
               <div className="border-t border-line p-6">
                 <div className="flex flex-wrap items-center gap-2">
-                  {inv.status !== 'PAID' && isOwner && (
+                  {inv.status !== 'PAID' && inv.status !== 'VOIDED' && isOwner && (
                     <button onClick={pay} disabled={paying}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
                       {paying ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />} Pay {fmtMoney(inv.amountCents, inv.currency)}
@@ -138,7 +139,7 @@ export default function InvoiceDetailPage() {
                     <Download size={15} /> Download PDF
                   </a>
                 </div>
-                {inv.status !== 'PAID' && !isOwner && (
+                {inv.status !== 'PAID' && inv.status !== 'VOIDED' && !isOwner && (
                   <p className="mt-3 text-xs text-amber-400/90">Only an account owner can pay invoices. Ask an owner on your team to complete payment.</p>
                 )}
                 {payError && <p className="mt-3 text-xs text-red-400">{payError}</p>}

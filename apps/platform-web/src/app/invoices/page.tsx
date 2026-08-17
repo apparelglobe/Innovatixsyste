@@ -11,6 +11,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   SENT: { label: 'Due', cls: 'bg-amber-400/15 text-amber-300' },
   OVERDUE: { label: 'Overdue', cls: 'bg-red-500/15 text-red-300' },
   DRAFT: { label: 'Draft', cls: 'bg-white/10 text-neutral-300' },
+  VOIDED: { label: 'Void', cls: 'bg-white/5 text-neutral-500 line-through' },
 };
 
 export default function InvoicesPage() {
@@ -24,7 +25,7 @@ export default function InvoicesPage() {
         <p className="mt-1 text-sm text-neutral-500">Billing history for {project?.name}.</p>
         <div className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
           {project && project.invoices.length > 0 ? project.invoices.map((inv) => {
-            const s = STATUS[inv.status] ?? { label: inv.status, cls: 'bg-white/10 text-neutral-300' };
+            const s = STATUS[inv.overdue ? 'OVERDUE' : inv.status] ?? { label: inv.status, cls: 'bg-white/10 text-neutral-300' };
             return (
               <Link key={inv.id} href={`/invoices/${inv.id}`} className="flex flex-wrap items-center gap-3 p-4 transition hover:bg-white/[0.03]">
                 <div className="min-w-0 flex-1">

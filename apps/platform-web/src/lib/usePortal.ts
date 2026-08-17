@@ -9,7 +9,7 @@ export type Project = {
   milestones: { id: string; name: string; status: string; dueDate: string | null; completedAt: string | null }[];
   reports: { id: string; kind: string; title: string; summary: string; periodStart: string | null; periodEnd: string | null; publishedAt: string }[];
   approvals: { id: string; subject: string; status: string; createdAt: string; decidedAt: string | null; note: string | null }[];
-  invoices: { id: string; number: string; amountCents: number; currency: string; status: string; issuedAt: string | null; dueAt: string | null; paidAt: string | null }[];
+  invoices: { id: string; number: string; amountCents: number; currency: string; status: string; issuedAt: string | null; dueAt: string | null; paidAt: string | null; overdue: boolean }[];
   files: { id: string; name: string; category: string; sizeBytes: number | null; uploadedAt: string }[];
   members: { id: string; name: string; role: string }[];
   messages: { id: string; authorType: 'CLIENT' | 'TEAM'; body: string; createdAt: string }[];

@@ -130,11 +130,11 @@ export default function OverviewPage() {
                 </div>
               )}
 
-              {/* Delivery progress at a glance */}
+              {/* Delivery progress — the % is the headline metric; milestones are plain context */}
               <div className="mt-5 border-t border-line pt-4">
-                <div className="flex items-center justify-between text-xs text-neutral-500">
-                  <span>{p.milestonesDone}/{p.milestonesTotal} milestones{p.nextMilestone ? ` · next: ${p.nextMilestone.name}` : ''}</span>
-                  <span className="font-semibold text-neutral-300">{p.percentComplete}%</span>
+                <div className="flex items-end justify-between gap-3">
+                  <span className="text-xs text-neutral-500">{p.milestonesDone} of {p.milestonesTotal} milestones done{p.nextMilestone ? ` · next: ${p.nextMilestone.name}` : ''}</span>
+                  <span className="text-lg font-bold leading-none text-white">{p.percentComplete}%</span>
                 </div>
                 <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
                   <div className="h-full rounded-full bg-brand-gradient" style={{ width: `${p.percentComplete}%` }} />

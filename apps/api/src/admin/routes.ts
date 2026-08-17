@@ -145,7 +145,15 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     // A date-only "next update" (YYYY-MM-DD) is pinned to noon UTC so it renders as the chosen
     // calendar day in ET (America/New_York) rather than slipping to the day before at midnight.
     const nextUpdate = b.data.nextUpdateAt ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(b.data.nextUpdateAt) ? `${b.data.nextUpdateAt}T12:00:00Z` : b.data.nextUpdateAt) : null;
-    await prisma.project.update({ where: { id: p.id }, data: { ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.status ? { status: b.data.status } : {}), ...(b.data.percentComplete != null ? { percentComplete: b.data.percentComplete } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } : {}), ...(b.data.nextUpdateAt !== undefined ? { nextUpdateAt: nextUpdate } : {}), ...(b.data.nextUpdateNote !== undefined ? { nextUpdateNote: b.data.nextUpdateNote ? cleanText(b.data.nextUpdateNote, 280) : null } : {}) } });
+    // Clearing the date clears the note too — a note with no date has nothing to attach to, and
+    // would otherwise linger in the DB and reappear if a date were set again later.
+    const nextUpdatePatch = b.data.nextUpdateAt !== undefined && !nextUpdate
+      ? { nextUpdateAt: null, nextUpdateNote: null }
+      : {
+          ...(b.data.nextUpdateAt !== undefined ? { nextUpdateAt: nextUpdate } : {}),
+          ...(b.data.nextUpdateNote !== undefined ? { nextUpdateNote: b.data.nextUpdateNote ? cleanText(b.data.nextUpdateNote, 280) : null } : {}),
+        };
+    await prisma.project.update({ where: { id: p.id }, data: { ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.status ? { status: b.data.status } : {}), ...(b.data.percentComplete != null ? { percentComplete: b.data.percentComplete } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } : {}), ...nextUpdatePatch } });
     await audit(ctx.tenantId, ctx.session.sub, 'Project', p.id, 'PROJECT_UPDATED', b.data);
     if (statusChanged) {
       await activity(ctx.tenantId, p.id, 'STATUS', `Project status changed to ${b.data.status}`);
@@ -282,9 +290,10 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const ctx = await requireStaff(req, reply, 'invoice:write'); if (!ctx) return;
     const inv = await prisma.invoice.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId }, include: { project: { select: { id: true, clientOrgId: true } } } });
     if (!inv) return reply.code(404).send({ ok: false });
-    const b = z.object({ status: z.enum(['DRAFT', 'SENT', 'PAID', 'OVERDUE']).optional(), paymentUrl: z.string().url().max(2000).nullable().optional() }).safeParse(req.body);
+    const b = z.object({ status: z.enum(['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'VOIDED']).optional(), paymentUrl: z.string().url().max(2000).nullable().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
     const status = b.data.status;
+    if (status === 'VOIDED' && inv.status === 'PAID') return reply.code(409).send({ ok: false, message: 'A paid invoice cannot be voided.' });
     await prisma.invoice.update({
       where: { id: inv.id },
       data: {

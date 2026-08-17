@@ -1049,6 +1049,7 @@ enum InvoiceStatus {
   SENT
   PAID
   OVERDUE
+  VOIDED
 }
 
 enum MessageAuthorType {

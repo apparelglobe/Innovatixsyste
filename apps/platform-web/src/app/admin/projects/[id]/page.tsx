@@ -328,7 +328,7 @@ export default function AdminProjectPage() {
                     <div className="text-xs text-neutral-500">{inv.status === 'PAID' ? `Paid ${fmtDate(inv.paidAt)}` : inv.dueAt ? `Due ${fmtDate(inv.dueAt)}` : 'No due date'}</div>
                   </div>
                   <div className="font-bold text-white">{fmtMoney(inv.amountCents, inv.currency)}</div>
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${inv.status === 'PAID' ? 'bg-emerald-400/15 text-emerald-300' : inv.status === 'OVERDUE' ? 'bg-red-500/15 text-red-300' : inv.status === 'SENT' ? 'bg-amber-400/15 text-amber-300' : 'bg-white/10 text-neutral-300'}`}>{inv.status}</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${inv.status === 'PAID' ? 'bg-emerald-400/15 text-emerald-300' : inv.status === 'OVERDUE' ? 'bg-red-500/15 text-red-300' : inv.status === 'SENT' ? 'bg-amber-400/15 text-amber-300' : inv.status === 'VOIDED' ? 'bg-white/5 text-neutral-500 line-through' : 'bg-white/10 text-neutral-300'}`}>{inv.status}</span>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {inv.status !== 'DRAFT' && <a href={`${API_BASE}/admin/invoices/${inv.id}/pdf`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-line-strong px-2 py-1 text-xs text-neutral-200 hover:bg-white/[0.05]">PDF</a>}
                     {can('invoice:write') && <>
@@ -337,6 +337,7 @@ export default function AdminProjectPage() {
                       {inv.paymentUrl && inv.status !== 'PAID' && <a href={inv.paymentUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-primary/40 px-2 py-1 text-xs text-primary-light hover:bg-white/[0.05]">Link ✓</a>}
                       {inv.status !== 'PAID' && <button onClick={() => act('PATCH', `/admin/invoices/${inv.id}`, { status: 'PAID' })} className="rounded-md border border-line-strong px-2 py-1 text-xs text-emerald-300 hover:bg-white/[0.05]">Mark paid</button>}
                       {(inv.status === 'SENT') && <button onClick={() => act('PATCH', `/admin/invoices/${inv.id}`, { status: 'OVERDUE' })} className="rounded-md border border-line-strong px-2 py-1 text-xs text-red-300 hover:bg-white/[0.05]">Overdue</button>}
+                      {(inv.status === 'SENT' || inv.status === 'OVERDUE') && <button onClick={() => { if (confirm(`Void ${inv.number}? This cancels the invoice — it drops off the client's payable list and no payment is recorded.`)) act('PATCH', `/admin/invoices/${inv.id}`, { status: 'VOIDED' }); }} className="rounded-md border border-line-strong px-2 py-1 text-xs text-neutral-400 hover:bg-white/[0.05]">Void</button>}
                     </>}
                   </div>
                 </div>

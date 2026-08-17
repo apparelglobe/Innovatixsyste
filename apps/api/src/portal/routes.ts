@@ -12,6 +12,7 @@ import { hashAbuseIdentifier } from '../lib/crypto';
 import { checkRateLimit } from '../lib/ratelimit';
 import { normalizeEmail, cleanMultiline, cleanText } from '../lib/sanitize';
 import { enrichApprovals } from '../lib/approvals';
+import { isInvoiceOverdue } from '../lib/invoice-status';
 import { enrichInvoice } from '../lib/invoices';
 import { renderInvoicePdfFrom } from '../billing';
 import { markInvoicePaid } from '../billing/mark-paid';
@@ -133,7 +134,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     // The one payable invoice (oldest unpaid) — feeds the workspace "Pay invoice" next-action.
     // OVERDUE is computed here since the stored status isn't swept from a due date server-side.
     const inv = project.invoices[0] ?? null;
-    const payableInvoice = inv ? { id: inv.id, number: inv.number, amountCents: inv.amountCents, overdue: inv.status === 'OVERDUE' || (inv.dueAt ? new Date(inv.dueAt).getTime() < Date.now() : false) } : null;
+    const payableInvoice = inv ? { id: inv.id, number: inv.number, amountCents: inv.amountCents, overdue: isInvoiceOverdue(inv) } : null;
 
     return reply.send({
       ok: true,
@@ -200,7 +201,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
       },
     });
-    return reply.send({ ok: true, project: project ? { ...project, approvals: await enrichApprovals(prisma, project.approvals) } : null });
+    return reply.send({ ok: true, project: project ? { ...project, approvals: await enrichApprovals(prisma, project.approvals), invoices: project.invoices.map((i) => ({ ...i, overdue: isInvoiceOverdue(i) })) } : null });
   });
 
   // ── Send a message to the delivery team (client → team) ──
@@ -234,7 +235,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!ctx) return;
     const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id, { lineItems: { orderBy: { createdAt: 'asc' } } });
     if (!inv) return reply.code(404).send({ ok: false });
-    return reply.send({ ok: true, invoice: await enrichInvoice(inv) });
+    return reply.send({ ok: true, invoice: { ...(await enrichInvoice(inv)), overdue: isInvoiceOverdue(inv) } });
   });
 
   // ── Invoice PDF (client) — scoped, rendered on demand, DRAFT never exposed ──
@@ -288,6 +289,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!inv) return reply.code(404).send({ ok: false });
     // Confirm it is payable and not already paid.
     if (inv.status === 'PAID') return reply.code(409).send({ ok: false, message: 'This invoice is already paid.' });
+    if (inv.status === 'VOIDED') return reply.code(409).send({ ok: false, message: 'This invoice was voided.' });
     if (inv.status === 'DRAFT') return reply.code(409).send({ ok: false, message: 'This invoice is not payable yet.' });
     if (inv.amountCents <= 0) return reply.code(409).send({ ok: false, message: 'This invoice has no payable amount.' });
 
