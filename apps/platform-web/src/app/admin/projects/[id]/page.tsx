@@ -22,6 +22,7 @@ export default function AdminProjectPage() {
   const [busy, setBusy] = useState(false);
   const [invLines, setInvLines] = useState<{ description: string; quantity: string; unit: string; milestoneId: string }[]>([{ description: '', quantity: '1', unit: '', milestoneId: '' }]);
   const [clientUsers, setClientUsers] = useState<any[]>([]);
+  const [invitations, setInvitations] = useState<any[]>([]);
   const [historyFor, setHistoryFor] = useState<Record<string, any[] | undefined>>({});
   const [voidInv, setVoidInv] = useState<{ id: string; number: string } | null>(null);
 
@@ -32,6 +33,8 @@ export default function AdminProjectPage() {
     if (r.status === 200) setP(r.body.project);
     const cu = await apiJson<{ users: any[] }>(`/admin/projects/${id}/client-users`);
     if (cu.status === 200) setClientUsers(cu.body.users || []);
+    const inv = await apiJson<{ invitations: any[] }>(`/admin/projects/${id}/client-invitations`);
+    if (inv.status === 200) setInvitations(inv.body.invitations || []);
   }, [id]);
   useEffect(() => { if (me) load(); }, [me, load]);
 
@@ -275,6 +278,27 @@ export default function AdminProjectPage() {
                   <select name="role" className={`${input} w-28`}><option value="MEMBER">Member</option><option value="OWNER">Owner</option></select>
                   <button disabled={busy} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Invite</button>
                 </form>
+              )}
+
+              {invitations.some((iv: any) => iv.status === 'VALID' || iv.status === 'EXPIRED') && (
+                <>
+                  <div className="pt-4 text-xs font-semibold uppercase tracking-wider text-neutral-500">Pending invitations</div>
+                  {invitations.filter((iv: any) => iv.status === 'VALID' || iv.status === 'EXPIRED').map((iv: any) => (
+                    <div key={iv.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface/50 p-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-neutral-200">{iv.email}</div>
+                        <div className="text-xs text-neutral-500">{iv.role} · invited {fmtDate(iv.createdAt)}{iv.sendCount > 1 ? ` · sent ${iv.sendCount}×` : ''}</div>
+                      </div>
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${iv.status === 'EXPIRED' ? 'bg-amber-400/15 text-amber-300' : 'bg-white/10 text-neutral-300'}`}>{iv.status === 'EXPIRED' ? 'Expired' : 'Awaiting setup'}</span>
+                      {can('team:assign') && (
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => act('POST', `/admin/client-invitations/${iv.id}/resend`)} className="rounded-md border border-line-strong px-2 py-1 text-xs text-primary-light hover:bg-white/[0.05]">Resend</button>
+                          <button onClick={() => act('POST', `/admin/client-invitations/${iv.id}/revoke`)} className="rounded-md border border-line-strong px-2 py-1 text-xs text-neutral-400 hover:bg-white/[0.05]">Revoke</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
               )}
             </div>
           )}
