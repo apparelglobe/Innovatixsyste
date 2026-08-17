@@ -29,9 +29,6 @@ export default function OverviewPage() {
   const router = useRouter();
   const [me, setMe] = useState<{ user: { firstName?: string; lastName?: string; role?: string }; org: { name: string } } | null>(null);
   const [data, setData] = useState<Overview | null>(null);
-  const [deciding, setDeciding] = useState(false);
-  const [note, setNote] = useState('');
-  const [decideError, setDecideError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const meRes = await apiJson<{ ok: boolean; user?: { firstName?: string; lastName?: string; role?: string }; org?: { name: string } }>('/portal/me');
@@ -45,16 +42,6 @@ export default function OverviewPage() {
 
   // Only account OWNERs may decide approvals / pay (the backend enforces this too).
   const isOwner = me?.user.role === 'OWNER';
-
-  async function decide(id: string, decision: 'APPROVED' | 'CHANGES_REQUESTED') {
-    setDecideError(null);
-    setDeciding(true);
-    const r = await api(`/portal/approvals/${id}/decide`, { method: 'POST', body: JSON.stringify({ decision, note: note.trim() || undefined }) });
-    setDeciding(false);
-    if (!r.ok) { setDecideError(r.status === 403 ? 'Only an account owner can approve or request changes.' : 'Could not submit your decision. Please try again.'); return; }
-    setNote('');
-    await load();
-  }
 
   if (!me || !data) {
     return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
@@ -109,18 +96,7 @@ export default function OverviewPage() {
                       Only an account owner can {state.action.kind === 'invoice' ? 'pay this' : 'approve this'}. Ask an owner on your team to take a look.
                     </p>
                   ) : state.action.kind === 'approval' ? (
-                    <>
-                      <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000}
-                        placeholder="Add a note (optional) — shared with the delivery team"
-                        className="w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
-                      <div className="mt-3 flex justify-end gap-2">
-                        <button disabled={deciding} onClick={() => decide(state.action!.targetId, 'CHANGES_REQUESTED')}
-                          className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Request changes</button>
-                        <button disabled={deciding} onClick={() => decide(state.action!.targetId, 'APPROVED')}
-                          className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{state.action.label}</button>
-                      </div>
-                      {decideError && <p className="mt-2 text-right text-xs text-red-400">{decideError}</p>}
-                    </>
+                    <ApprovalPanel targetId={state.action.targetId} label={state.action.label} onDecided={load} />
                   ) : state.action.href ? (
                     <a href={state.action.href}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
@@ -130,16 +106,20 @@ export default function OverviewPage() {
                 </div>
               )}
 
-              {/* Delivery progress — the % is the headline metric; milestones are plain context */}
-              <div className="mt-5 border-t border-line pt-4">
-                <div className="flex items-end justify-between gap-3">
-                  <span className="text-xs text-neutral-500">{p.milestonesDone} of {p.milestonesTotal} milestones done{p.nextMilestone ? ` · next: ${p.nextMilestone.name}` : ''}</span>
-                  <span className="text-lg font-bold leading-none text-white">{p.percentComplete}%</span>
+              {/* Delivery progress — the % is the headline metric; milestones are plain context.
+                  Hidden once the project is complete: no "next milestone" to chase, and a
+                  staff-set % below 100 shouldn't contradict a "Project complete" card. */}
+              {state.turn !== 'DONE' && (
+                <div className="mt-5 border-t border-line pt-4">
+                  <div className="flex items-end justify-between gap-3">
+                    <span className="text-xs text-neutral-500">{p.milestonesDone} of {p.milestonesTotal} milestones done{p.nextMilestone ? ` · next: ${p.nextMilestone.name}` : ''}</span>
+                    <span className="text-lg font-bold leading-none text-white">{p.percentComplete}%</span>
+                  </div>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                    <div className="h-full rounded-full bg-brand-gradient" style={{ width: `${p.percentComplete}%` }} />
+                  </div>
                 </div>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                  <div className="h-full rounded-full bg-brand-gradient" style={{ width: `${p.percentComplete}%` }} />
-                </div>
-              </div>
+              )}
             </section>
 
             {/* ── Project details (subordinate; relocated under Projects in S5) ── */}
@@ -206,5 +186,42 @@ export default function OverviewPage() {
         )}
       </div>
     </PortalShell>
+  );
+}
+
+/**
+ * The one-next-action approval control, isolated into its own component so typing a note only
+ * re-renders THIS panel — not the whole Home page. (The prior inline version kept the note in
+ * page state, so every keystroke re-rendered the entire status card, and the first click after
+ * typing could be lost to that churn.) The note is only cleared on a confirmed success.
+ */
+function ApprovalPanel({ targetId, label, onDecided }: { targetId: string; label: string; onDecided: () => void | Promise<void> }) {
+  const [note, setNote] = useState('');
+  const [deciding, setDeciding] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function decide(decision: 'APPROVED' | 'CHANGES_REQUESTED') {
+    setErr(null);
+    setDeciding(true);
+    const r = await api(`/portal/approvals/${targetId}/decide`, { method: 'POST', body: JSON.stringify({ decision, note: note.trim() || undefined }) });
+    setDeciding(false);
+    if (!r.ok) { setErr(r.status === 403 ? 'Only an account owner can approve or request changes.' : 'Could not submit your decision. Please try again.'); return; }
+    setNote('');
+    await onDecided();
+  }
+
+  return (
+    <>
+      <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000}
+        placeholder="Add a note (optional) — shared with the delivery team"
+        className="w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
+      <div className="mt-3 flex justify-end gap-2">
+        <button type="button" disabled={deciding} onClick={() => decide('CHANGES_REQUESTED')}
+          className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Request changes</button>
+        <button type="button" disabled={deciding} onClick={() => decide('APPROVED')}
+          className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{label}</button>
+      </div>
+      {err && <p className="mt-2 text-right text-xs text-red-400">{err}</p>}
+    </>
   );
 }

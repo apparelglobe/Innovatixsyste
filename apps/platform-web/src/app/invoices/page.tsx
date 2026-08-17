@@ -31,7 +31,7 @@ export default function InvoicesPage() {
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-white">{inv.number}</div>
                   <div className="text-xs text-neutral-500">
-                    Issued {fmtDate(inv.issuedAt)}{inv.status === 'PAID' ? ` · paid ${fmtDate(inv.paidAt)}` : inv.dueAt ? ` · due ${fmtDate(inv.dueAt)}` : ''}
+                    Issued {fmtDate(inv.issuedAt)}{inv.status === 'VOIDED' ? ' · voided' : inv.status === 'PAID' ? ` · paid ${fmtDate(inv.paidAt)}` : inv.dueAt ? ` · due ${fmtDate(inv.dueAt)}` : ''}
                   </div>
                 </div>
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.cls}`}>{s.label}</span>

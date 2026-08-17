@@ -85,7 +85,7 @@ export default function InvoiceDetailPage() {
                 </div>
                 <div className="mt-1 space-y-0.5 text-sm text-neutral-500">
                   {inv.issuedAt && <div>Issued {fmtDate(inv.issuedAt)}</div>}
-                  {inv.status === 'PAID' ? <div>Paid {fmtDate(inv.paidAt)}</div> : inv.dueAt && <div>Due {fmtDate(inv.dueAt)}</div>}
+                  {inv.status === 'VOIDED' ? <div>Voided — no payment due</div> : inv.status === 'PAID' ? <div>Paid {fmtDate(inv.paidAt)}</div> : inv.dueAt && <div>Due {fmtDate(inv.dueAt)}</div>}
                   {inv.billingContactName && <div>Billed to {inv.billingContactName}</div>}
                 </div>
               </div>
@@ -144,7 +144,7 @@ export default function InvoiceDetailPage() {
                 )}
                 {payError && <p className="mt-3 text-xs text-red-400">{payError}</p>}
                 {inv.status === 'PAID' && <p className="mt-1 text-xs text-neutral-500">Paid {fmtDate(inv.paidAt)} · Ref {inv.number}</p>}
-                <p className="mt-3 flex items-center gap-1 text-[11px] text-neutral-600"><Lock size={11} /> Payments are processed securely by our payment provider.</p>
+                {inv.status !== 'VOIDED' && <p className="mt-3 flex items-center gap-1 text-[11px] text-neutral-600"><Lock size={11} /> Payments are processed securely by our payment provider.</p>}
               </div>
             )}
           </div>

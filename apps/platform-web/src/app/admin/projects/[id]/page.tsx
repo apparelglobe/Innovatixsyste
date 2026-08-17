@@ -23,6 +23,7 @@ export default function AdminProjectPage() {
   const [invLines, setInvLines] = useState<{ description: string; quantity: string; unit: string; milestoneId: string }[]>([{ description: '', quantity: '1', unit: '', milestoneId: '' }]);
   const [clientUsers, setClientUsers] = useState<any[]>([]);
   const [historyFor, setHistoryFor] = useState<Record<string, any[] | undefined>>({});
+  const [voidInv, setVoidInv] = useState<{ id: string; number: string } | null>(null);
 
   const load = useCallback(async () => {
     const r = await apiJson<{ project: any }>(`/admin/projects/${id}`);
@@ -333,11 +334,11 @@ export default function AdminProjectPage() {
                     {inv.status !== 'DRAFT' && <a href={`${API_BASE}/admin/invoices/${inv.id}/pdf`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-line-strong px-2 py-1 text-xs text-neutral-200 hover:bg-white/[0.05]">PDF</a>}
                     {can('invoice:write') && <>
                       {inv.status === 'DRAFT' && <button onClick={() => act('PATCH', `/admin/invoices/${inv.id}`, { status: 'SENT' })} className="rounded-md border border-line-strong px-2 py-1 text-xs text-neutral-200 hover:bg-white/[0.05]">Send</button>}
-                      {inv.status !== 'PAID' && !inv.paymentUrl && <button onClick={() => act('POST', `/admin/invoices/${inv.id}/payment-link`)} className="rounded-md border border-line-strong px-2 py-1 text-xs text-primary-light hover:bg-white/[0.05]">Payment link</button>}
-                      {inv.paymentUrl && inv.status !== 'PAID' && <a href={inv.paymentUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-primary/40 px-2 py-1 text-xs text-primary-light hover:bg-white/[0.05]">Link ✓</a>}
-                      {inv.status !== 'PAID' && <button onClick={() => act('PATCH', `/admin/invoices/${inv.id}`, { status: 'PAID' })} className="rounded-md border border-line-strong px-2 py-1 text-xs text-emerald-300 hover:bg-white/[0.05]">Mark paid</button>}
+                      {inv.status !== 'PAID' && inv.status !== 'VOIDED' && !inv.paymentUrl && <button onClick={() => act('POST', `/admin/invoices/${inv.id}/payment-link`)} className="rounded-md border border-line-strong px-2 py-1 text-xs text-primary-light hover:bg-white/[0.05]">Payment link</button>}
+                      {inv.paymentUrl && inv.status !== 'PAID' && inv.status !== 'VOIDED' && <a href={inv.paymentUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-primary/40 px-2 py-1 text-xs text-primary-light hover:bg-white/[0.05]">Link ✓</a>}
+                      {inv.status !== 'PAID' && inv.status !== 'VOIDED' && <button onClick={() => act('PATCH', `/admin/invoices/${inv.id}`, { status: 'PAID' })} className="rounded-md border border-line-strong px-2 py-1 text-xs text-emerald-300 hover:bg-white/[0.05]">Mark paid</button>}
                       {(inv.status === 'SENT') && <button onClick={() => act('PATCH', `/admin/invoices/${inv.id}`, { status: 'OVERDUE' })} className="rounded-md border border-line-strong px-2 py-1 text-xs text-red-300 hover:bg-white/[0.05]">Overdue</button>}
-                      {(inv.status === 'SENT' || inv.status === 'OVERDUE') && <button onClick={() => { if (confirm(`Void ${inv.number}? This cancels the invoice — it drops off the client's payable list and no payment is recorded.`)) act('PATCH', `/admin/invoices/${inv.id}`, { status: 'VOIDED' }); }} className="rounded-md border border-line-strong px-2 py-1 text-xs text-neutral-400 hover:bg-white/[0.05]">Void</button>}
+                      {(inv.status === 'SENT' || inv.status === 'OVERDUE') && <button onClick={() => setVoidInv({ id: inv.id, number: inv.number })} className="rounded-md border border-line-strong px-2 py-1 text-xs text-neutral-400 hover:bg-white/[0.05]">Void</button>}
                     </>}
                   </div>
                 </div>
@@ -386,6 +387,19 @@ export default function AdminProjectPage() {
           )}
         </div>
       </div>
+
+      {voidInv && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4" onClick={() => setVoidInv(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-card">
+            <h3 className="text-base font-bold text-white">Void {voidInv.number}?</h3>
+            <p className="mt-2 text-sm text-neutral-400">This cancels the invoice — it drops off the client&rsquo;s payable list and no payment is recorded. This can&rsquo;t be undone here.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setVoidInv(null)} className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05]">Cancel</button>
+              <button onClick={() => { const v = voidInv; setVoidInv(null); act('PATCH', `/admin/invoices/${v.id}`, { status: 'VOIDED' }); }} className="rounded-lg bg-red-500/90 px-3.5 py-2 text-sm font-semibold text-white hover:bg-red-500">Void invoice</button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminShell>
   );
 }

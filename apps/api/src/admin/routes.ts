@@ -13,6 +13,7 @@ import { resolveDefaultTenant } from '../tenant';
 import { hashAbuseIdentifier } from '../lib/crypto';
 import { checkRateLimit } from '../lib/ratelimit';
 import { normalizeEmail, cleanText, cleanMultiline } from '../lib/sanitize';
+import { parseDateInput } from '../lib/dates';
 import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPassword } from '../staff/auth';
 import { can, type Action } from '../staff/rbac';
 import { notifyClientOrg } from '../notifications/service';
@@ -111,7 +112,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (!b.success) return reply.code(400).send({ ok: false });
     const org = await prisma.clientOrg.findFirst({ where: { id: b.data.clientOrgId, tenantId: ctx.tenantId } });
     if (!org) return reply.code(404).send({ ok: false });
-    const project = await prisma.project.create({ data: { tenantId: ctx.tenantId, clientOrgId: org.id, name: cleanText(b.data.name, 200), code: b.data.code ? cleanText(b.data.code, 40) : null, dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } });
+    const project = await prisma.project.create({ data: { tenantId: ctx.tenantId, clientOrgId: org.id, name: cleanText(b.data.name, 200), code: b.data.code ? cleanText(b.data.code, 40) : null, dueDate: b.data.dueDate ? parseDateInput(b.data.dueDate) : null } });
     await audit(ctx.tenantId, ctx.session.sub, 'Project', project.id, 'PROJECT_CREATED', { clientOrgId: org.id });
     return reply.send({ ok: true, project: { id: project.id } });
   });
@@ -142,9 +143,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const b = z.object({ name: z.string().trim().min(1).max(200).optional(), status: z.enum(['DISCOVERY', 'IN_PROGRESS', 'UAT', 'LAUNCHED', 'ON_HOLD', 'COMPLETE']).optional(), percentComplete: z.number().int().min(0).max(100).optional(), dueDate: z.string().nullable().optional(), nextUpdateAt: z.string().nullable().optional(), nextUpdateNote: z.string().max(280).nullable().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
     const statusChanged = b.data.status && b.data.status !== p.status;
-    // A date-only "next update" (YYYY-MM-DD) is pinned to noon UTC so it renders as the chosen
-    // calendar day in ET (America/New_York) rather than slipping to the day before at midnight.
-    const nextUpdate = b.data.nextUpdateAt ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(b.data.nextUpdateAt) ? `${b.data.nextUpdateAt}T12:00:00Z` : b.data.nextUpdateAt) : null;
+    const nextUpdate = b.data.nextUpdateAt ? parseDateInput(b.data.nextUpdateAt) : null;
     // Clearing the date clears the note too — a note with no date has nothing to attach to, and
     // would otherwise linger in the DB and reappear if a date were set again later.
     const nextUpdatePatch = b.data.nextUpdateAt !== undefined && !nextUpdate
@@ -153,7 +152,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
           ...(b.data.nextUpdateAt !== undefined ? { nextUpdateAt: nextUpdate } : {}),
           ...(b.data.nextUpdateNote !== undefined ? { nextUpdateNote: b.data.nextUpdateNote ? cleanText(b.data.nextUpdateNote, 280) : null } : {}),
         };
-    await prisma.project.update({ where: { id: p.id }, data: { ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.status ? { status: b.data.status } : {}), ...(b.data.percentComplete != null ? { percentComplete: b.data.percentComplete } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } : {}), ...nextUpdatePatch } });
+    await prisma.project.update({ where: { id: p.id }, data: { ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.status ? { status: b.data.status } : {}), ...(b.data.percentComplete != null ? { percentComplete: b.data.percentComplete } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? parseDateInput(b.data.dueDate) : null } : {}), ...nextUpdatePatch } });
     await audit(ctx.tenantId, ctx.session.sub, 'Project', p.id, 'PROJECT_UPDATED', b.data);
     if (statusChanged) {
       await activity(ctx.tenantId, p.id, 'STATUS', `Project status changed to ${b.data.status}`);
@@ -169,7 +168,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const b = z.object({ name: z.string().trim().min(1).max(200), sequence: z.number().int().optional(), dueDate: z.string().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
     const count = await prisma.milestone.count({ where: { projectId: p.id } });
-    const m = await prisma.milestone.create({ data: { tenantId: ctx.tenantId, projectId: p.id, name: cleanText(b.data.name, 200), sequence: b.data.sequence ?? count + 1, dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } });
+    const m = await prisma.milestone.create({ data: { tenantId: ctx.tenantId, projectId: p.id, name: cleanText(b.data.name, 200), sequence: b.data.sequence ?? count + 1, dueDate: b.data.dueDate ? parseDateInput(b.data.dueDate) : null } });
     await audit(ctx.tenantId, ctx.session.sub, 'Milestone', m.id, 'MILESTONE_CREATED');
     return reply.send({ ok: true, milestone: { id: m.id } });
   });
@@ -181,7 +180,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const b = z.object({ status: z.enum(['PLANNED', 'IN_PROGRESS', 'DONE']).optional(), name: z.string().trim().min(1).max(200).optional(), dueDate: z.string().nullable().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
     const done = b.data.status === 'DONE';
-    await prisma.milestone.update({ where: { id: m.id }, data: { ...(b.data.status ? { status: b.data.status, completedAt: done ? new Date() : null } : {}), ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? new Date(b.data.dueDate) : null } : {}) } });
+    await prisma.milestone.update({ where: { id: m.id }, data: { ...(b.data.status ? { status: b.data.status, completedAt: done ? new Date() : null } : {}), ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? parseDateInput(b.data.dueDate) : null } : {}) } });
     await audit(ctx.tenantId, ctx.session.sub, 'Milestone', m.id, 'MILESTONE_UPDATED', b.data);
     if (b.data.status) {
       await activity(ctx.tenantId, m.project.id, 'MILESTONE', `Milestone "${m.name}" → ${b.data.status}`);
@@ -196,7 +195,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const p = await scopedProject(ctx.tenantId, (req.params as { id: string }).id); if (!p) return reply.code(404).send({ ok: false });
     const b = z.object({ kind: z.enum(['DAILY', 'WEEKLY']), title: z.string().trim().min(1).max(200), summary: z.string().trim().min(1).max(8000), periodStart: z.string().optional(), periodEnd: z.string().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
-    const report = await prisma.projectReport.create({ data: { tenantId: ctx.tenantId, projectId: p.id, kind: b.data.kind, title: cleanText(b.data.title, 200), summary: cleanMultiline(b.data.summary, 8000), periodStart: b.data.periodStart ? new Date(b.data.periodStart) : null, periodEnd: b.data.periodEnd ? new Date(b.data.periodEnd) : null } });
+    const report = await prisma.projectReport.create({ data: { tenantId: ctx.tenantId, projectId: p.id, kind: b.data.kind, title: cleanText(b.data.title, 200), summary: cleanMultiline(b.data.summary, 8000), periodStart: b.data.periodStart ? parseDateInput(b.data.periodStart) : null, periodEnd: b.data.periodEnd ? parseDateInput(b.data.periodEnd) : null } });
     await audit(ctx.tenantId, ctx.session.sub, 'ProjectReport', report.id, 'REPORT_PUBLISHED');
     await activity(ctx.tenantId, p.id, 'REPORT', `${b.data.kind === 'DAILY' ? 'Daily' : 'Weekly'} report published: ${report.title}`);
     await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'REPORT_PUBLISHED', title: `New ${b.data.kind.toLowerCase()} report: ${report.title}`, projectId: p.id, linkPath: '/reports', email: true });
@@ -275,7 +274,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         billingContactUserId: b.data.billingContactUserId || null,
         paymentUrl: b.data.paymentUrl || null,
         issuedAt: status === 'SENT' ? new Date() : null,
-        dueAt: b.data.dueAt ? new Date(b.data.dueAt) : null,
+        dueAt: b.data.dueAt ? parseDateInput(b.data.dueAt) : null,
         lineItems: { create: items },
       },
     });
