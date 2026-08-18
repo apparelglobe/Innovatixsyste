@@ -372,6 +372,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     // Scope: the approval must belong to a project owned by the caller's org.
     const approval = await prisma.approval.findFirst({
       where: { id, tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org } },
+      include: { milestone: { select: { name: true } } },
     });
     if (!approval) return reply.code(404).send({ ok: false });
     // State machine: an approval can be decided exactly once. Re-deciding a closed approval
@@ -397,7 +398,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
             prisma.milestone.update({ where: { id: approval.milestoneId }, data: { status: 'DONE', completedAt: new Date() } }),
             // S4: the curated "Milestone approved" relationship moment (the raw 'APPROVAL' row above
             // stays for the internal/admin log; the client timeline shows only this curated one).
-            prisma.portalActivity.create({ data: { tenantId: ctx.session.tenant, projectId: approval.projectId, type: MOMENT.MILESTONE_APPROVED, message: `${MOMENT_MESSAGE[MOMENT.MILESTONE_APPROVED]}: ${approval.subject}` } }),
+            prisma.portalActivity.create({ data: { tenantId: ctx.session.tenant, projectId: approval.projectId, type: MOMENT.MILESTONE_APPROVED, message: `${MOMENT_MESSAGE[MOMENT.MILESTONE_APPROVED]}: ${approval.milestone?.name ?? approval.subject}` } }),
           ]
         : []),
     ]);

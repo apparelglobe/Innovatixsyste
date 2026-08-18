@@ -205,7 +205,7 @@ export default function AdminProjectPage() {
                 <div key={a.id} className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3">
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-white">{a.subject}</div>
-                    <div className="text-xs text-neutral-500">{a.type} · requested {fmtDate(a.createdAt)}{a.requestedByName ? ` by ${a.requestedByName}` : ''}</div>
+                    <div className="text-xs text-neutral-500">{a.type} · requested {fmtDate(a.createdAt)}{a.requestedByName ? ` by ${a.requestedByName}` : ''}{a.milestoneId ? ` · milestone: ${p.milestones.find((m: any) => m.id === a.milestoneId)?.name ?? '—'}` : ''}</div>
                     {a.decidedAt && (
                       <div className="mt-0.5 text-xs text-neutral-400">
                         {a.status === 'APPROVED' ? 'Approved' : 'Changes requested'} {fmtDate(a.decidedAt)}{a.decidedByName ? ` by ${a.decidedByName}` : ''}

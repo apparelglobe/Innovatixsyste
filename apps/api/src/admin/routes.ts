@@ -161,8 +161,11 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (statusChanged) {
       await activity(ctx.tenantId, p.id, 'STATUS', `Project status changed to ${b.data.status}`);
       // S4: the curated "Project launched" relationship moment (the raw STATUS row above stays for
-      // the internal/admin log; the client timeline shows only this curated one).
-      if (b.data.status === 'LAUNCHED') await activity(ctx.tenantId, p.id, MOMENT.PROJECT_LAUNCHED, MOMENT_MESSAGE[MOMENT.PROJECT_LAUNCHED]);
+      // the internal/admin log; the client timeline shows only this curated one). Recorded ONCE per
+      // project — a LAUNCHED → ON_HOLD → LAUNCHED round-trip must not add a second launch moment.
+      if (b.data.status === 'LAUNCHED' && (await prisma.portalActivity.count({ where: { projectId: p.id, type: MOMENT.PROJECT_LAUNCHED } })) === 0) {
+        await activity(ctx.tenantId, p.id, MOMENT.PROJECT_LAUNCHED, MOMENT_MESSAGE[MOMENT.PROJECT_LAUNCHED]);
+      }
       await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'PROJECT_STATUS_CHANGED', title: `Project status: ${b.data.status}`, projectId: p.id, linkPath: '/', email: true });
     }
     return reply.send({ ok: true });
