@@ -14,7 +14,7 @@ import { hashAbuseIdentifier } from '../lib/crypto';
 import { checkRateLimit } from '../lib/ratelimit';
 import { normalizeEmail, cleanText, cleanMultiline } from '../lib/sanitize';
 import { parseDateInput } from '../lib/dates';
-import { MOMENT, MOMENT_MESSAGE } from '../lib/relationship-moments';
+import { MOMENT, MOMENT_MESSAGE, CURATED_MOMENT_TYPES } from '../lib/relationship-moments';
 import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPassword } from '../staff/auth';
 import { can, type Action } from '../staff/rbac';
 import { notifyClientOrg } from '../notifications/service';
@@ -131,7 +131,10 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         files: { where: { deletedAt: null, isCurrent: true }, orderBy: { uploadedAt: 'desc' } },
         members: true,
         messages: { orderBy: { createdAt: 'asc' } }, // staff sees internal notes too
-        activities: { orderBy: { createdAt: 'desc' }, take: 30 },
+        // S4 D2: the admin Activity tab shows the RAW log only; curated moment rows are the
+        // client-facing relationship timeline (client feed filters to them), so excluding them
+        // here prevents a raw + curated duplicate of the same event on the staff view.
+        activities: { where: { type: { notIn: CURATED_MOMENT_TYPES } }, orderBy: { createdAt: 'desc' }, take: 30 },
       },
     });
     if (!project) return reply.code(404).send({ ok: false });

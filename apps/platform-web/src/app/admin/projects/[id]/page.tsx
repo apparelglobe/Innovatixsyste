@@ -190,9 +190,14 @@ export default function AdminProjectPage() {
           {tab === 'Approvals' && (
             <div className="space-y-3">
               {can('approval:create') && (
-                <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); act('POST', `/admin/projects/${id}/approvals`, { type: f.get('type'), subject: f.get('subject') }); (e.currentTarget as HTMLFormElement).reset(); }} className="flex flex-wrap gap-2 rounded-2xl border border-line bg-surface p-5">
+                <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); act('POST', `/admin/projects/${id}/approvals`, { type: f.get('type'), subject: f.get('subject'), milestoneId: f.get('milestoneId') || undefined }); (e.currentTarget as HTMLFormElement).reset(); }} className="flex flex-wrap gap-2 rounded-2xl border border-line bg-surface p-5">
                   <select name="type" className={`${input} w-44`}>{APPROVAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
                   <input name="subject" required placeholder="What needs approval?" className={`${input} flex-1`} />
+                  {/* Link a milestone — required for a MILESTONE approval to mark it done + emit the "Milestone approved" moment. */}
+                  <select name="milestoneId" defaultValue="" className="w-52 shrink-0 rounded-lg border border-line-strong bg-white/[0.03] px-3 py-2 text-sm text-white">
+                    <option value="">Link a milestone…</option>
+                    {p.milestones.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
                   <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark">Request approval</button>
                 </form>
               )}
