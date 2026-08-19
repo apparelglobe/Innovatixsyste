@@ -11,7 +11,7 @@ export default function TeamPage() {
   if (loading || !me) return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
 
   return (
-    <PortalShell orgName={me.org.name} userName={userName} active="team">
+    <PortalShell orgName={me.org.name} userName={userName} active="projects">
       <div className="mx-auto max-w-3xl">
         <h1 className="text-2xl font-extrabold tracking-tight text-white">Your delivery team</h1>
         <p className="mt-1 text-sm text-neutral-500">The Innovatix engineers building {project?.name}.</p>
