@@ -39,7 +39,7 @@ export function PortalShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-base">
+    <div className="flex min-h-[100dvh] bg-base [--portal-bottom-nav-h:3.25rem]">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
         <div className="flex items-center px-5 py-5">
           <Logo className="h-7 w-auto" />
@@ -86,14 +86,16 @@ export function PortalShell({
             </div>
           </div>
         </header>
-        <main className="flex-1 px-6 pt-8 pb-24 md:pb-8">{children}</main>
+        {/* Bottom padding on mobile = the fixed bottom-nav's real height + safe-area inset + 1rem gap,
+            so normal-flow pages clear the bar without an arbitrary magic number. Desktop keeps pb-8. */}
+        <main className="flex-1 px-6 pt-8 pb-[calc(var(--portal-bottom-nav-h)_+_env(safe-area-inset-bottom)_+_1rem)] md:pb-8">{children}</main>
       </div>
 
       {/* Mobile bottom nav — the sidebar is desktop-only, so this is the sole nav (and Sign out is in the account menu above) on phones. */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface/95 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {NAV.map((n) => (
           <a key={n.key} href={n.href}
-            className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition ${active === n.key ? 'text-primary-light' : 'text-neutral-500 hover:text-neutral-300'}`}>
+            className={`flex h-[var(--portal-bottom-nav-h)] flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${active === n.key ? 'text-primary-light' : 'text-neutral-500 hover:text-neutral-300'}`}>
             {n.icon} {n.label}
           </a>
         ))}

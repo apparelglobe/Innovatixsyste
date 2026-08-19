@@ -32,7 +32,7 @@ export default function MessagesPage() {
 
   return (
     <PortalShell orgName={me.org.name} userName={userName} active="messages">
-      <div className="mx-auto flex h-[calc(100vh-11rem)] max-w-2xl flex-col md:h-[calc(100vh-8rem)]">
+      <div className="mx-auto flex h-[calc(100dvh_-_7rem_-_var(--portal-bottom-nav-h)_-_env(safe-area-inset-bottom))] max-w-2xl flex-col md:h-[calc(100vh-8rem)]">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-white">Messages</h1>
           <p className="mt-1 text-sm text-neutral-500">Direct line to your delivery team.</p>
