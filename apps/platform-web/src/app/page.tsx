@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, CircleDot, Circle, Loader2, FileText, Clock, ArrowRight } from 'lucide-react';
+import { Loader2, Clock, ArrowRight } from 'lucide-react';
 import { PortalShell } from '@/components/PortalShell';
 import { api, apiJson } from '@/lib/portal-api';
 import { fmtDate } from '@/lib/fmt';
@@ -130,53 +130,9 @@ export default function OverviewPage() {
               )}
             </section>
 
-            {/* ── Project details (subordinate; relocated under Projects in S5) ── */}
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-2xl border border-line bg-surface p-6">
-                <h3 className="text-sm font-bold text-white">Milestones</h3>
-                <ul className="mt-4 space-y-3">
-                  {p.milestones.map((m) => (
-                    <li key={m.id} className="flex items-center gap-2.5 text-sm">
-                      {m.status === 'DONE' ? <CheckCircle2 size={16} className="text-emerald-400" />
-                        : m.status === 'IN_PROGRESS' ? <CircleDot size={16} className="text-primary-light" />
-                        : <Circle size={16} className="text-neutral-600" />}
-                      <span className={m.status === 'PLANNED' ? 'text-neutral-500' : 'text-neutral-200'}>{m.name}</span>
-                      <span className="ml-auto text-xs text-neutral-600">{fmtDate(m.dueDate)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <RelationshipTimeline moments={p.activities} />
-            </div>
-
-            {p.latestReport && (
-              <div className="rounded-2xl border border-line bg-surface p-6">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary-light">
-                  <FileText size={14} /> Latest {p.latestReport.kind.toLowerCase()} report
-                </div>
-                <h3 className="mt-2 font-bold text-white">{p.latestReport.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-neutral-400">{p.latestReport.summary}</p>
-                <p className="mt-3 text-xs text-neutral-600">Published {fmtDate(p.latestReport.publishedAt)}</p>
-              </div>
-            )}
-
-            <div className="rounded-2xl border border-line bg-surface p-6">
-              <h3 className="text-sm font-bold text-white">Your delivery team</h3>
-              <div className="mt-4 flex flex-wrap gap-4">
-                {p.team.map((t) => (
-                  <div key={t.name} className="flex items-center gap-2.5">
-                    <span className="grid h-9 w-9 place-items-center rounded-full bg-elevated text-xs font-bold text-primary-light">
-                      {t.name.split(/[.\s]+/).map((s) => s[0]).slice(0, 2).join('').toUpperCase()}
-                    </span>
-                    <div>
-                      <div className="text-sm font-semibold text-white">{t.name}</div>
-                      <div className="text-xs text-neutral-500">{t.role}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Relationship timeline stays on Home (Canon §6); project detail (milestones, reports,
+                delivery team) now lives under Projects. */}
+            <RelationshipTimeline moments={p.activities} />
           </div>
         )}
           </>
