@@ -178,7 +178,10 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         reports: { orderBy: { publishedAt: 'desc' } },
         approvals: { orderBy: { createdAt: 'desc' } },
         invoices: { orderBy: { createdAt: 'desc' } },
-        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true, state: 'AVAILABLE' }, orderBy: { uploadedAt: 'desc' } },
+        // storageKey guard: only list files that actually have stored bytes — the download endpoint
+        // (findClientVisibleFile + `!file.storageKey → 404`) refuses keyless rows, so the list must
+        // agree or the client sees a Download that 404s. (Metadata-only rows, e.g. from seed, exist.)
+        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true, state: 'AVAILABLE', storageKey: { not: null } }, orderBy: { uploadedAt: 'desc' } },
         members: true,
         messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
       },
@@ -199,7 +202,10 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         reports: { orderBy: { publishedAt: 'desc' } },
         approvals: { orderBy: { createdAt: 'desc' } },
         invoices: { orderBy: { createdAt: 'desc' } },
-        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true, state: 'AVAILABLE' }, orderBy: { uploadedAt: 'desc' } },
+        // storageKey guard: only list files that actually have stored bytes — the download endpoint
+        // (findClientVisibleFile + `!file.storageKey → 404`) refuses keyless rows, so the list must
+        // agree or the client sees a Download that 404s. (Metadata-only rows, e.g. from seed, exist.)
+        files: { where: { clientVisible: true, deletedAt: null, isCurrent: true, state: 'AVAILABLE', storageKey: { not: null } }, orderBy: { uploadedAt: 'desc' } },
         members: true,
         messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
       },
