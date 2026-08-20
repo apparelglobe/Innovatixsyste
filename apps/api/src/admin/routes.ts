@@ -194,7 +194,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     await audit(ctx.tenantId, ctx.session.sub, 'Milestone', m.id, 'MILESTONE_UPDATED', b.data);
     if (b.data.status) {
       await activity(ctx.tenantId, m.project.id, 'MILESTONE', `Milestone "${m.name}" → ${b.data.status}`);
-      await notifyClientOrg(prisma, ctx.tenantId, m.project.clientOrgId, { type: 'MILESTONE_UPDATED', title: `Milestone updated: ${m.name}`, projectId: m.project.id, linkPath: '/milestones', email: true });
+      await notifyClientOrg(prisma, ctx.tenantId, m.project.clientOrgId, { type: 'MILESTONE_UPDATED', title: `Milestone updated: ${m.name}`, projectId: m.project.id, linkPath: '/projects?tab=milestones', email: true });
     }
     return reply.send({ ok: true });
   });
@@ -208,7 +208,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const report = await prisma.projectReport.create({ data: { tenantId: ctx.tenantId, projectId: p.id, kind: b.data.kind, title: cleanText(b.data.title, 200), summary: cleanMultiline(b.data.summary, 8000), periodStart: b.data.periodStart ? parseDateInput(b.data.periodStart) : null, periodEnd: b.data.periodEnd ? parseDateInput(b.data.periodEnd) : null } });
     await audit(ctx.tenantId, ctx.session.sub, 'ProjectReport', report.id, 'REPORT_PUBLISHED');
     await activity(ctx.tenantId, p.id, 'REPORT', `${b.data.kind === 'DAILY' ? 'Daily' : 'Weekly'} report published: ${report.title}`);
-    await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'REPORT_PUBLISHED', title: `New ${b.data.kind.toLowerCase()} report: ${report.title}`, projectId: p.id, linkPath: '/reports', email: true });
+    await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'REPORT_PUBLISHED', title: `New ${b.data.kind.toLowerCase()} report: ${report.title}`, projectId: p.id, linkPath: '/projects?tab=reports', email: true });
     return reply.send({ ok: true, report: { id: report.id } });
   });
 

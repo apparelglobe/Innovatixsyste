@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, CircleDot, Circle, FileText, Download, Loader2 } from 'lucide-react';
 import { usePortal } from '@/lib/usePortal';
 import { PortalShell } from '@/components/PortalShell';
@@ -13,15 +14,35 @@ import { fmtDate } from '@/lib/fmt';
 const TABS = ['Milestones', 'Reports', 'Files', 'Approvals', 'Team'] as const;
 type Tab = (typeof TABS)[number];
 
+// S5.3 — tab deep-linking: /projects?tab=<slug> lands on that tab; clicking a tab reflects into the URL,
+// so the redirected /milestones,/reports,/files,/team routes deep-link to the right tab.
+const TAB_SLUG: Record<Tab, string> = { Milestones: 'milestones', Reports: 'reports', Files: 'files', Approvals: 'approvals', Team: 'team' };
+const SLUG_TAB: Record<string, Tab> = { milestones: 'Milestones', reports: 'Reports', files: 'Files', approvals: 'Approvals', team: 'Team' };
+
 const MS_LABEL: Record<string, string> = { DONE: 'Complete', IN_PROGRESS: 'In progress', PLANNED: 'Planned' };
 const CAT_LABEL: Record<string, string> = { CONTRACT: 'Contract', INVOICE: 'Invoice', DELIVERABLE: 'Deliverable', OTHER: 'File' };
 const kb = (b?: number | null) => (b ? `${Math.round(b / 1024).toLocaleString()} KB` : '');
 const initials = (name: string) => name.split(/[.\s]+/).map((s) => s[0]).slice(0, 2).join('').toUpperCase();
 
+const Spinner = () => <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
+
+// useSearchParams() must sit under a Suspense boundary for this statically-rendered route.
 export default function ProjectsPage() {
+  return <Suspense fallback={<Spinner />}><ProjectsHub /></Suspense>;
+}
+
+function ProjectsHub() {
   const { me, project, userName, loading } = usePortal();
-  const [tab, setTab] = useState<Tab>('Milestones');
-  if (loading || !me) return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
+  const router = useRouter();
+  const params = useSearchParams();
+  const tabParam = params.get('tab');
+  const [tab, setTab] = useState<Tab>(() => SLUG_TAB[tabParam ?? ''] ?? 'Milestones');
+  // Keep the URL the source of truth: a soft navigation that only changes ?tab= (e.g. clicking a
+  // notification while already on /projects, or a redirected /reports link) does NOT remount this
+  // page, so without this the tab would desync from the URL. selectTab keeps the click optimistic.
+  useEffect(() => { const t = SLUG_TAB[tabParam ?? '']; if (t) setTab(t); }, [tabParam]);
+  const selectTab = (t: Tab) => { setTab(t); router.replace(`/projects?tab=${TAB_SLUG[t]}`, { scroll: false }); };
+  if (loading || !me) return <Spinner />;
 
   const done = project?.milestones.filter((m) => m.status === 'DONE').length ?? 0;
   const total = project?.milestones.length ?? 0;
@@ -46,7 +67,7 @@ export default function ProjectsPage() {
             {/* Tabs mirror the admin project detail; each reads one slice of the loaded project graph. */}
             <div className="mt-5 flex flex-wrap gap-1 border-b border-line">
               {TABS.map((t) => (
-                <button key={t} onClick={() => setTab(t)}
+                <button key={t} onClick={() => selectTab(t)}
                   className={`rounded-t-lg px-3.5 py-2 text-sm font-medium transition ${tab === t ? 'border-b-2 border-primary text-white' : 'text-neutral-400 hover:text-white'}`}>{t}</button>
               ))}
             </div>

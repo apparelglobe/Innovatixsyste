@@ -117,7 +117,7 @@ async function finalizeAvailable(prisma: PrismaClient, file: ProjectFile): Promi
   await prisma.auditEvent.create({ data: { tenantId: file.tenantId, entityType: 'ProjectFile', entityId: file.id, action: file.version > 1 ? 'FILE_VERSIONED' : 'FILE_UPLOADED', actorType: 'SYSTEM', data: { version: file.version } } }).catch(() => undefined);
   if (file.clientVisible && project) {
     await prisma.portalActivity.create({ data: { tenantId: file.tenantId, projectId: file.projectId, type: 'FILE', message: file.version > 1 ? `File updated: ${file.name} (v${file.version})` : `File uploaded: ${file.name}` } }).catch(() => undefined);
-    await notifyClientOrg(prisma, file.tenantId, project.clientOrgId, { type: 'FILE_UPLOADED', title: file.version > 1 ? `Updated file: ${file.name} (v${file.version})` : `New file: ${file.name}`, projectId: file.projectId, linkPath: '/files', email: true }).catch(() => undefined);
+    await notifyClientOrg(prisma, file.tenantId, project.clientOrgId, { type: 'FILE_UPLOADED', title: file.version > 1 ? `Updated file: ${file.name} (v${file.version})` : `New file: ${file.name}`, projectId: file.projectId, linkPath: '/projects?tab=files', email: true }).catch(() => undefined);
   }
 }
 
