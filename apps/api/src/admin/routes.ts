@@ -123,7 +123,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const project = await prisma.project.findFirst({
       where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId },
       include: {
-        clientOrg: { select: { id: true, name: true } },
+        clientOrg: { select: { id: true, name: true, carePlans: { orderBy: { createdAt: 'desc' } } } },
         milestones: { orderBy: { sequence: 'asc' } },
         reports: { orderBy: { publishedAt: 'desc' } },
         approvals: { orderBy: { createdAt: 'desc' } },
@@ -319,6 +319,113 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
         if (status === 'SENT') await notifyClientOrg(prisma, ctx.tenantId, inv.project.clientOrgId, { type: 'INVOICE_CREATED', title: `New invoice ${inv.number}`, projectId: inv.project.id, linkPath: '/invoices', email: true });
       }
     }
+    return reply.send({ ok: true });
+  });
+
+  // ── Care Plans (Phase 3 — relationship-level retainers). ADDITIVE to project/milestone billing;
+  //    these routes only MODEL + CONTROL the plan. Recurring RETAINER-invoice generation is P3.2, and
+  //    the RETAINER_ACTIVATED timeline moment + "Care Plan active" workspace state are P3.4. ──
+
+  // Create a Care Plan for a project's client org (starts DRAFT). One non-terminal plan per relationship.
+  app.post('/admin/projects/:id/care-plans', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'invoice:write'); if (!ctx) return;
+    const p = await scopedProject(ctx.tenantId, (req.params as { id: string }).id); if (!p) return reply.code(404).send({ ok: false });
+    const b = z.object({
+      name: z.string().trim().min(1).max(120),
+      monthlyAmountCents: z.number().int().min(0).max(100000000),
+      currency: z.string().trim().length(3).optional(),
+      includedSummary: z.string().trim().max(2000).optional(),
+      nextReportAt: z.string().optional(),
+      nextReportNote: z.string().trim().max(300).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ ok: false });
+    // A relationship has at most one live plan; terminal (CANCELED/COMPLETED) plans don't block a new one.
+    const existing = await prisma.carePlan.findFirst({ where: { tenantId: ctx.tenantId, clientOrgId: p.clientOrgId, status: { in: ['DRAFT', 'ACTIVE', 'PAUSED', 'PAST_DUE'] } } });
+    if (existing) return reply.code(409).send({ ok: false, message: 'This client already has an active or pending Care Plan.' });
+    try {
+      const cp = await prisma.carePlan.create({
+        data: {
+          tenantId: ctx.tenantId, clientOrgId: p.clientOrgId,
+          name: cleanText(b.data.name, 120),
+          monthlyAmountCents: b.data.monthlyAmountCents,
+          currency: (b.data.currency || 'USD').toUpperCase(),
+          includedSummary: b.data.includedSummary ? cleanMultiline(b.data.includedSummary, 2000) : null,
+          nextReportAt: b.data.nextReportAt ? parseDateInput(b.data.nextReportAt) : null,
+          nextReportNote: b.data.nextReportNote ? cleanText(b.data.nextReportNote, 300) : null,
+        },
+      });
+      await audit(ctx.tenantId, ctx.session.sub, 'CarePlan', cp.id, 'CARE_PLAN_CREATED', { name: cp.name, monthlyAmountCents: cp.monthlyAmountCents });
+      return reply.send({ ok: true, carePlan: { id: cp.id } });
+    } catch (err) {
+      // Lost a create race against the partial-unique "one live plan per org" index (belt-and-suspenders
+      // to the findFirst guard above). Treat as the same conflict rather than a 500.
+      if ((err as { code?: string }).code === 'P2002') return reply.code(409).send({ ok: false, message: 'This client already has an active or pending Care Plan.' });
+      throw err;
+    }
+  });
+
+  // Update a Care Plan: field edits and/or a validated lifecycle transition. Transitions set the
+  // right timestamps and the `nextInvoiceAt` billing cursor that the P3.2 worker will read.
+  app.patch('/admin/care-plans/:id', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'invoice:write'); if (!ctx) return;
+    const cp = await prisma.carePlan.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId } });
+    if (!cp) return reply.code(404).send({ ok: false });
+    const b = z.object({
+      name: z.string().trim().min(1).max(120).optional(),
+      monthlyAmountCents: z.number().int().min(0).max(100000000).optional(),
+      currency: z.string().trim().length(3).optional(),
+      includedSummary: z.string().trim().max(2000).nullable().optional(),
+      nextReportAt: z.string().nullable().optional(),
+      nextReportNote: z.string().trim().max(300).nullable().optional(),
+      status: z.enum(['ACTIVE', 'PAUSED', 'CANCELED', 'COMPLETED']).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ ok: false });
+
+    // Lifecycle state machine. activate/reactivate → ACTIVE; only these transitions are legal.
+    const ALLOWED: Record<string, string[]> = {
+      DRAFT: ['ACTIVE', 'CANCELED'],
+      ACTIVE: ['PAUSED', 'CANCELED', 'COMPLETED'],
+      PAUSED: ['ACTIVE', 'CANCELED', 'COMPLETED'],
+      PAST_DUE: ['ACTIVE', 'PAUSED', 'CANCELED'],
+      // CANCELED & COMPLETED are terminal. Reactivation is PAUSED→ACTIVE only; to resume after a
+      // cancel, staff create a NEW plan (the one-live-plan-per-org guard protects it). This keeps
+      // "at most one live plan per relationship" true on every code path (no CANCELED→ACTIVE can
+      // resurrect a second live plan alongside a newly-created one → no double retainer billing).
+      CANCELED: [],
+      COMPLETED: [],
+    };
+    let transition: Record<string, unknown> = {};
+    const changingStatus = b.data.status && b.data.status !== cp.status;
+    if (changingStatus) {
+      if (!ALLOWED[cp.status]?.includes(b.data.status!)) return reply.code(409).send({ ok: false, message: `Cannot move a Care Plan from ${cp.status} to ${b.data.status}.` });
+      const now = new Date();
+      if (b.data.status === 'ACTIVE') {
+        // Billing anchor = activation day-of-month in ET (capped at 28 so every month has it); bill the
+        // first period from now; clear pause/cancel; keep the original startedAt across a reactivation.
+        const etDay = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', day: 'numeric' }).format(now));
+        transition = { status: 'ACTIVE', startedAt: cp.startedAt ?? now, pausedAt: null, canceledAt: null, endedAt: null, billingAnchorDay: Math.min(28, etDay || cp.billingAnchorDay), nextInvoiceAt: now };
+      } else if (b.data.status === 'PAUSED') {
+        transition = { status: 'PAUSED', pausedAt: now };
+      } else if (b.data.status === 'CANCELED') {
+        transition = { status: 'CANCELED', canceledAt: now, nextInvoiceAt: null };
+      } else if (b.data.status === 'COMPLETED') {
+        transition = { status: 'COMPLETED', endedAt: now, nextInvoiceAt: null };
+      }
+    }
+
+    await prisma.carePlan.update({
+      where: { id: cp.id },
+      data: {
+        ...(b.data.name !== undefined ? { name: cleanText(b.data.name, 120) } : {}),
+        ...(b.data.monthlyAmountCents !== undefined ? { monthlyAmountCents: b.data.monthlyAmountCents } : {}),
+        ...(b.data.currency !== undefined ? { currency: b.data.currency.toUpperCase() } : {}),
+        ...(b.data.includedSummary !== undefined ? { includedSummary: b.data.includedSummary ? cleanMultiline(b.data.includedSummary, 2000) : null } : {}),
+        ...(b.data.nextReportAt !== undefined ? { nextReportAt: b.data.nextReportAt ? parseDateInput(b.data.nextReportAt) : null } : {}),
+        ...(b.data.nextReportNote !== undefined ? { nextReportNote: b.data.nextReportNote ? cleanText(b.data.nextReportNote, 300) : null } : {}),
+        ...transition,
+      },
+    });
+    if (changingStatus) await audit(ctx.tenantId, ctx.session.sub, 'CarePlan', cp.id, `CARE_PLAN_${b.data.status}`, { from: cp.status });
     return reply.send({ ok: true });
   });
 

@@ -9,7 +9,8 @@ import { api, apiJson } from '@/lib/portal-api';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/fmt';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const TABS = ['Overview', 'Milestones', 'Reports', 'Approvals', 'Messages', 'Team', 'Files', 'Invoices', 'Activity'] as const;
+const TABS = ['Overview', 'Milestones', 'Reports', 'Approvals', 'Messages', 'Team', 'Files', 'Invoices', 'Care Plan', 'Activity'] as const;
+const CARE_PLAN_TONE: Record<string, string> = { DRAFT: 'bg-white/10 text-neutral-300', ACTIVE: 'bg-emerald-400/15 text-emerald-300', PAUSED: 'bg-amber-400/15 text-amber-300', CANCELED: 'bg-white/10 text-neutral-400', COMPLETED: 'bg-primary/15 text-primary-light', PAST_DUE: 'bg-red-400/15 text-red-300' };
 const PROJECT_STATUS = ['DISCOVERY', 'IN_PROGRESS', 'UAT', 'LAUNCHED', 'ON_HOLD', 'COMPLETE'];
 const MS_STATUS = ['PLANNED', 'IN_PROGRESS', 'DONE'];
 const APPROVAL_TYPES = ['MILESTONE', 'DELIVERABLE', 'UAT', 'CHANGE_REQUEST', 'DEPLOYMENT'];
@@ -408,6 +409,65 @@ export default function AdminProjectPage() {
               )}
             </div>
           )}
+
+          {tab === 'Care Plan' && (() => {
+            // Relationship-level retainer (Phase 3, additive to project/milestone billing). Recurring
+            // RETAINER-invoice generation is P3.2; this tab models + controls the plan only.
+            const plans: any[] = p.clientOrg?.carePlans ?? [];
+            const plan = plans.find((c) => !['CANCELED', 'COMPLETED'].includes(c.status)) ?? null;
+            const writable = can('invoice:write');
+            const move = (status: string) => act('PATCH', `/admin/care-plans/${plan.id}`, { status });
+            return (
+              <div className="space-y-4">
+                {plan ? (
+                  <div className="rounded-2xl border border-line bg-surface p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-white">{plan.name}</h3>
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${CARE_PLAN_TONE[plan.status] ?? 'bg-white/10 text-neutral-300'}`}>{plan.status}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-sm text-neutral-300 sm:grid-cols-2">
+                      <div><span className="text-neutral-500">Monthly:</span> {fmtMoney(plan.monthlyAmountCents, plan.currency)}</div>
+                      <div><span className="text-neutral-500">Auto-pay:</span> {plan.autoPay ? 'On' : 'Off — Stripe not wired (P3.5)'}</div>
+                      {plan.status === 'ACTIVE' && <div><span className="text-neutral-500">Next invoice:</span> {plan.nextInvoiceAt ? fmtDate(plan.nextInvoiceAt) : '—'}</div>}
+                      <div><span className="text-neutral-500">Billing day:</span> {plan.status === 'DRAFT' ? 'set on activation' : plan.billingAnchorDay}</div>
+                      {plan.nextReportAt && <div className="sm:col-span-2"><span className="text-neutral-500">Next report:</span> {fmtDate(plan.nextReportAt)}{plan.nextReportNote ? ` · ${plan.nextReportNote}` : ''}</div>}
+                    </div>
+                    {plan.includedSummary && <p className="mt-3 whitespace-pre-wrap rounded-lg bg-white/[0.03] p-3 text-sm text-neutral-300">{plan.includedSummary}</p>}
+                    <p className="mt-3 text-xs text-neutral-600">Recurring invoice generation is not live yet (P3.2). Activating sets the billing cursor; no invoices are created until the worker slice ships.</p>
+                    {writable && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {plan.status === 'DRAFT' && <button onClick={() => move('ACTIVE')} disabled={busy} className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Activate</button>}
+                        {plan.status === 'ACTIVE' && <button onClick={() => move('PAUSED')} disabled={busy} className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Pause</button>}
+                        {plan.status === 'PAUSED' && <button onClick={() => move('ACTIVE')} disabled={busy} className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Reactivate</button>}
+                        {(plan.status === 'ACTIVE' || plan.status === 'PAUSED') && <button onClick={() => move('COMPLETED')} disabled={busy} className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Complete</button>}
+                        <button onClick={() => move('CANCELED')} disabled={busy} className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-red-300 hover:bg-red-400/10 disabled:opacity-60">Cancel</button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {plans.length > 0 && <div className="rounded-xl border border-line bg-surface p-3 text-sm text-neutral-400">Previous plan: {plans[0].name} · <span className="text-neutral-500">{plans[0].status}</span></div>}
+                    {writable ? (
+                      <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const dollars = parseFloat(String(f.get('amount') || '')); if (!String(f.get('name') || '').trim() || !(dollars >= 0)) return; act('POST', `/admin/projects/${id}/care-plans`, { name: f.get('name'), monthlyAmountCents: Math.round(dollars * 100), currency: String(f.get('currency') || 'USD').toUpperCase(), includedSummary: f.get('includedSummary') || undefined, nextReportAt: f.get('nextReportAt') || undefined, nextReportNote: f.get('nextReportNote') || undefined }); (e.currentTarget as HTMLFormElement).reset(); }} className="space-y-3 rounded-2xl border border-line bg-surface p-5">
+                        <h3 className="text-sm font-bold text-white">New Care Plan</h3>
+                        <input name="name" required placeholder="Plan name (e.g. Care Plan — Growth)" className={input} />
+                        <div className="flex gap-2">
+                          <input name="amount" type="number" min="0" step="0.01" required placeholder="Monthly amount" className={input} />
+                          <input name="currency" defaultValue="USD" maxLength={3} className="w-24 shrink-0 rounded-lg border border-line-strong bg-white/[0.03] px-3 py-2 text-sm uppercase text-white" />
+                        </div>
+                        <textarea name="includedSummary" rows={3} placeholder="What's included (scope / hours) — shown to the client" className={input} />
+                        <div className="flex flex-wrap gap-2">
+                          <input name="nextReportAt" type="date" className="rounded-lg border border-line-strong bg-white/[0.03] px-3 py-2 text-sm text-white" />
+                          <input name="nextReportNote" placeholder="Next report note (optional)" className={`${input} flex-1`} />
+                        </div>
+                        <button disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">Create Care Plan (draft)</button>
+                      </form>
+                    ) : <p className="text-neutral-400">No Care Plan. Billing permission is required to create one.</p>}
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {tab === 'Activity' && (
             <ul className="space-y-2.5">
