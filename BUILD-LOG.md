@@ -119,6 +119,18 @@ Phase 5  AI + scheduling +    →  stronger funnel & polish
 
 ---
 
+## Open production issues
+*Tracked separately from phase sign-offs. Cleared only when resolved + verified.*
+
+### 🔴 OPEN — File download returns 503 in the browser (Admin + Client routes) · predates S5
+- **Symptom:** clicking Download on a client-visible, AVAILABLE file yields **503** in the browser, reproducibly, on both `/v1/portal/files/:id/download` and `/v1/admin/files/:id/download`. **Not caused by S5** (the Projects hub only re-homed the same download links).
+- **Server-side trace (2026-08-21) — every layer returns 200:** object present on disk (`apps/api/.filestore`, valid `%PDF-1.4`, readable by the API's runtime user); the API request log shows the exact download reqIds completing **200**; the **nginx access log shows those same requests returning `200 668`** over HTTP/2; there are **zero 503 responses anywhere in the nginx access log**, and the error log is clean; **nothing sits in front of nginx** (`server: nginx/1.18.0`, no `cf-ray`/`via`). Storage is `local`; `/readyz` healthy.
+- **Working theory:** the 503 is injected **client-side / on the tester's network path** (corporate/VPN proxy, browser extension, service worker, or a cached response) — the origin delivers 200 + a valid PDF.
+- **Do not confuse with** the Download **404** fixed in S5.2 (keyless dev-seed rows → list `storageKey` guard + `DELETE 2`). That one is resolved.
+- **Close criteria:** a real browser download succeeds consistently (Admin + Client), OR the exact client/network component returning 503 is identified. Next evidence needed: DevTools **Response Headers** (`server:`?) on the failing request, plus an **incognito / different-network** retry.
+
+---
+
 ## Build Log
 *Newest first. Everything below is built on local dev only until a release is approved.*
 
@@ -130,6 +142,16 @@ Phase 5  AI + scheduling +    →  stronger funnel & polish
 - Status: in progress | done | verified
 - Notes: <decisions, deviations, follow-ups>
 ```
+
+### 2026-08-21 — Phase 2 · S5: Minimal nav + Projects hub — ✅ S5 COMPLETE (Phase 2 workspace signed off)
+- **Built (S5, three deployed slices — each browser-verified + signed off on prod):**
+  - **S5.1 — Minimal nav (8→4):** `PortalShell` collapsed to **Home · Projects · Billing · Messages** (Canon §6). New header **account menu** (avatar dropdown mirroring `NotificationBell`) now hosts **Account settings** + **Sign out** — relocated out of the desktop-only sidebar so it's reachable on every viewport. Net-new **mobile bottom nav** (fixed 4-item bar; `dvh` + `env(safe-area-inset-bottom)` so the Messages composer clears it on iOS). Keys kept stable (`overview`/`invoices`) so Home/Invoices resolve highlight unchanged; "Invoices" relabeled **Billing** on the same `/invoices` route.
+  - **S5.2 — Projects hub:** `/projects` became a single active-project workspace with in-context tabs **Milestones · Reports · Files · Approvals · Team** (mirrors admin `admin/projects/[id]`; reads the one `usePortal()` graph — no new API). Home trimmed to its Canon §6 essentials (**S2 status card + S4 relationship timeline**); the Milestones / latest-Report / delivery-Team cards moved under Projects.
+  - **S5.3 — Fold routes + deep-linking:** `/milestones,/reports,/files,/team` → **307 → `/projects?tab=<slug>`** (`next.config.js`); the hub reads/writes `?tab=` (URL is source of truth via a sync effect); the 4 standalone pages deleted; every client notification `linkPath` migrated to the hub tab (FILE_UPLOADED, MILESTONE_UPDATED, REPORT_PUBLISHED). Adversarial review caught + fixed a real defect (mount-only tab init desynced on same-route soft-nav).
+- **Files:** `components/PortalShell.tsx`; `app/projects/page.tsx` (new hub); `app/page.tsx` (Home trim); `app/messages/page.tsx` (mobile height); `next.config.js` (redirects); deleted `app/{milestones,reports,files,team}/page.tsx`; API: `portal/routes.ts` (file-list `storageKey` guard), `scanning/service.ts` + `admin/routes.ts` (linkPaths). **No DB migrations.**
+- **Also fixed here (Download 404 — distinct from the 503 below):** the client Files list advertised dev-seed metadata rows with no bytes (`storageKey` NULL) → Download 404. Added `storageKey: { not: null }` to both client file-list filters so the list can never surface an un-downloadable file; removed the 2 bogus seed rows from prod (`DELETE 2`).
+- **Status:** ✅ **S5 complete — Phase 2 "action-driven workspace" fully deployed + signed off** (S1 engine · S2 status card + QA · S3 next-update · S4 curated relationship timeline · S5 nav + hub). Branch `feat/phase-1-activation-gate`, committed + pushed through `5620852`.
+- **Open (separate — see ## Open production issues):** file-download **503** in the browser. **NOT part of S5 sign-off.**
 
 ### 2026-08-16 — DEPLOY: Phase 1 UI → production + full prod end-to-end test ✅
 - **Shipped to prod:** both frontends rebuilt + deployed via `./scripts/deploy.sh` (rsync → box → `npm install` + `prisma generate` + `prisma migrate deploy` + `turbo build` + `pm2 restart` of api / portal / systems-web / worker). Portal (`app.innovatixmarketing.com`) + marketing (`innovatixmarketing.com`), both HTTP 200. No pending migrations (schema already live from the 08-14 backend deploy).
