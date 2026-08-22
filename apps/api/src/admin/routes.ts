@@ -14,6 +14,7 @@ import { hashAbuseIdentifier } from '../lib/crypto';
 import { checkRateLimit } from '../lib/ratelimit';
 import { normalizeEmail, cleanText, cleanMultiline } from '../lib/sanitize';
 import { parseDateInput } from '../lib/dates';
+import { etDayNoonUTC } from '../lib/billing-period';
 import { MOMENT, MOMENT_MESSAGE, CURATED_MOMENT_TYPES } from '../lib/relationship-moments';
 import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPassword } from '../staff/auth';
 import { can, type Action } from '../staff/rbac';
@@ -400,10 +401,17 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       if (!ALLOWED[cp.status]?.includes(b.data.status!)) return reply.code(409).send({ ok: false, message: `Cannot move a Care Plan from ${cp.status} to ${b.data.status}.` });
       const now = new Date();
       if (b.data.status === 'ACTIVE') {
-        // Billing anchor = activation day-of-month in ET (capped at 28 so every month has it); bill the
-        // first period from now; clear pause/cancel; keep the original startedAt across a reactivation.
+        // First activation sets the ET billing-anchor day (≤28 so every month has it); a REACTIVATION
+        // keeps the original anchor and startedAt.
+        const firstActivation = !cp.startedAt;
         const etDay = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', day: 'numeric' }).format(now));
-        transition = { status: 'ACTIVE', startedAt: cp.startedAt ?? now, pausedAt: null, canceledAt: null, endedAt: null, billingAnchorDay: Math.min(28, etDay || cp.billingAnchorDay), nextInvoiceAt: now };
+        const anchorDay = firstActivation ? Math.min(28, etDay || cp.billingAnchorDay) : cp.billingAnchorDay;
+        // Resume the billing cursor at the LATER of today and the day AFTER the last billed period, so a
+        // reactivation never re-bills already-covered time (double-bill), never back-bills the paused
+        // stretch, and never collides with the last period's job key (which would stall billing).
+        const lastRetainer = await prisma.invoice.findFirst({ where: { tenantId: ctx.tenantId, carePlanId: cp.id, kind: 'RETAINER' }, orderBy: { billingPeriodEnd: 'desc' }, select: { billingPeriodEnd: true } });
+        const resumeFrom = lastRetainer?.billingPeriodEnd ? new Date(lastRetainer.billingPeriodEnd.getTime() + 24 * 60 * 60 * 1000) : now;
+        transition = { status: 'ACTIVE', startedAt: cp.startedAt ?? now, pausedAt: null, canceledAt: null, endedAt: null, billingAnchorDay: anchorDay, nextInvoiceAt: etDayNoonUTC(resumeFrom.getTime() > now.getTime() ? resumeFrom : now) };
       } else if (b.data.status === 'PAUSED') {
         transition = { status: 'PAUSED', pausedAt: now };
       } else if (b.data.status === 'CANCELED') {

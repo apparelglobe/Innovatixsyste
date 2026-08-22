@@ -1172,6 +1172,7 @@ enum JobType {
   ASSIGNMENT_NOTIFY
   SLA_WARNING
   PROPOSAL_EXPIRE
+  GENERATE_RETAINER_INVOICE // Phase 3 (P3.2) — recurring Care Plan invoice generation
 }
 
 enum JobStatus {

@@ -16,6 +16,7 @@ import {
 import { config } from '../config';
 import { alert } from '../observability';
 import { incr } from '../observability/metrics';
+import { generateRetainerInvoice } from '../billing/retainer';
 
 const BACKOFF_BASE_MS = 30_000;
 const BACKOFF_CAP_MS = 60 * 60 * 1000;
@@ -118,6 +119,10 @@ async function handle(prisma: PrismaClient, job: SideEffectJob): Promise<void> {
     case 'ASSIGNMENT_NOTIFY':
       // No assignee in V1 (unassigned queue) → nothing to send.
       return;
+    case 'GENERATE_RETAINER_INVOICE':
+      // Phase 3 — recurring Care Plan invoice. Idempotent + atomic (see billing/retainer.ts).
+      await generateRetainerInvoice(prisma, job);
+      return;
     default:
       throw new Error(`unknown job type: ${job.type}`);
   }
@@ -158,18 +163,23 @@ export async function processDueJobs(prisma: PrismaClient, now: Date = new Date(
         summary.dead++;
         incr('sideeffect_jobs_dead_total', { type: String(job.type) });
         alert({ kind: 'job.dead', level: 'critical', message: `Side-effect job ${job.type} dead-lettered after ${job.attempts} attempts`, tenantId: job.tenantId, data: { jobId: job.id, type: job.type, lastError: msg } });
-        // one-time dead-letter alert (best-effort; not itself retried into a loop)
-        await prisma.sideEffectJob.create({
-          data: {
-            tenantId: job.tenantId,
-            leadId: job.leadId,
-            inquiryId: job.inquiryId,
-            type: 'INTERNAL_NOTIFY',
-            payload: { deadLetterFor: job.id, jobType: job.type, lastError: msg, alert: true },
-            idempotencyKey: `${job.id}:DEAD_ALERT`,
-            maxAttempts: 3,
-          },
-        }).catch(() => undefined);
+        // one-time dead-letter alert (best-effort). ONLY for lead-scoped jobs — the INTERNAL_NOTIFY
+        // handler hard-requires a lead, so routing a lead-less job (e.g. retainer generation) through it
+        // would just fail + dead-letter again (a broken alert chain). Lead-less DEADs are already
+        // surfaced by the observability alert above.
+        if (job.leadId) {
+          await prisma.sideEffectJob.create({
+            data: {
+              tenantId: job.tenantId,
+              leadId: job.leadId,
+              inquiryId: job.inquiryId,
+              type: 'INTERNAL_NOTIFY',
+              payload: { deadLetterFor: job.id, jobType: job.type, lastError: msg, alert: true },
+              idempotencyKey: `${job.id}:DEAD_ALERT`,
+              maxAttempts: 3,
+            },
+          }).catch(() => undefined);
+        }
         void sideEffectFailureAlertEmail; // template available for a dedicated alert stream
       } else {
         await prisma.sideEffectJob.update({
