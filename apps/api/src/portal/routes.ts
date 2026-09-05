@@ -23,7 +23,9 @@ import {
 } from './auth';
 import { storage } from '../storage';
 import { notifyStaff } from '../notifications/service';
-import { requireClientPermission } from '../client/authz';
+import { requireClientPermission, resolveClientRole } from '../client/authz';
+import { clientCan } from '../client/rbac';
+import { selectClientCarePlan } from '../lib/care-plan';
 import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
 import { findClientOrgInvoice, findClientVisibleFile } from '../lib/scoped';
@@ -115,6 +117,10 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
     const { org, tenant } = ctx.session;
+    // Billing is OWNER-only (P3.3): resolve the caller's role so a member never loads OR receives the
+    // payable-invoice summary below. Everything else on the overview stays visible to members.
+    const role = await resolveClientRole(ctx.session);
+    const canBilling = !!role && clientCan(role, 'invoice:read');
 
     const project = await prisma.project.findFirst({
       where: { tenantId: tenant, clientOrgId: org },
@@ -124,7 +130,8 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         members: true,
         reports: { orderBy: { publishedAt: 'desc' }, take: 1 },
         approvals: { where: { status: 'PENDING' } },
-        invoices: { where: { status: { in: ['SENT', 'OVERDUE'] } }, orderBy: { dueAt: 'asc' }, take: 1 },
+        // The payable invoice is billing data — fetched separately below, and only for a billing-
+        // authorized caller, so a member's overview payload carries no invoice data at all.
         // S4: the CLIENT relationship timeline shows curated moments only (Canon allow-list) — never
         // raw system events. The full raw activity log stays on the admin project view.
         activities: { where: { type: { in: CURATED_MOMENT_TYPES } }, orderBy: { createdAt: 'desc' }, take: 50 },
@@ -134,10 +141,18 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
 
     const milestonesDone = project.milestones.filter((m) => m.status === 'DONE').length;
     const nextMilestone = project.milestones.find((m) => m.status !== 'DONE') ?? null;
-    // The one payable invoice (oldest unpaid) — feeds the workspace "Pay invoice" next-action.
+    // The one payable invoice (oldest unpaid) — feeds the workspace "Pay invoice" next-action. OWNER-only:
+    // loaded ONLY for a caller with invoice:read; a member gets payableInvoice = null and no invoice data.
+    // Scoped to this caller's own project (tenant + projectId), so it never crosses tenant/org.
     // OVERDUE is computed here since the stored status isn't swept from a due date server-side.
-    const inv = project.invoices[0] ?? null;
-    const payableInvoice = inv ? { id: inv.id, number: inv.number, amountCents: inv.amountCents, overdue: isInvoiceOverdue(inv) } : null;
+    let payableInvoice: { id: string; number: string; amountCents: number; overdue: boolean } | null = null;
+    if (canBilling) {
+      const inv = await prisma.invoice.findFirst({
+        where: { tenantId: tenant, projectId: project.id, status: { in: ['SENT', 'OVERDUE'] } },
+        orderBy: { dueAt: 'asc' },
+      });
+      if (inv) payableInvoice = { id: inv.id, number: inv.number, amountCents: inv.amountCents, overdue: isInvoiceOverdue(inv) };
+    }
 
     return reply.send({
       ok: true,
@@ -177,7 +192,9 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         milestones: { orderBy: { sequence: 'asc' } },
         reports: { orderBy: { publishedAt: 'desc' } },
         approvals: { orderBy: { createdAt: 'desc' } },
-        invoices: { orderBy: { createdAt: 'desc' } },
+        // Billing is OWNER-only (P3.3): invoices are deliberately NOT included here (a MEMBER may read
+        // project detail via project:read, but must never receive invoice data). The billing surface is
+        // served only by /portal/project + /portal/invoices/*, each gated on invoice:read.
         // storageKey guard: only list files that actually have stored bytes — the download endpoint
         // (findClientVisibleFile + `!file.storageKey → 404`) refuses keyless rows, so the list must
         // agree or the client sees a Download that 404s. (Metadata-only rows, e.g. from seed, exist.)
@@ -194,6 +211,11 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.get('/portal/project', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
+    // Billing is OWNER-only, enforced server-side (P3.3): resolve the caller's role once and only
+    // assemble the billing block for a role that grants invoice:read. A MEMBER — or a removed /
+    // deactivated account (role → null) — never receives invoice or Care Plan data in the payload.
+    const role = await resolveClientRole(ctx.session);
+    const canBilling = !!role && clientCan(role, 'invoice:read');
     const project = await prisma.project.findFirst({
       where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
       orderBy: { updatedAt: 'desc' },
@@ -201,7 +223,8 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         milestones: { orderBy: { sequence: 'asc' } },
         reports: { orderBy: { publishedAt: 'desc' } },
         approvals: { orderBy: { createdAt: 'desc' } },
-        invoices: { orderBy: { createdAt: 'desc' } },
+        // Invoices are NOT included here — billing data is owner-only and returned in the separate
+        // `billing` block below, so a member's project payload carries no invoice data at all.
         // storageKey guard: only list files that actually have stored bytes — the download endpoint
         // (findClientVisibleFile + `!file.storageKey → 404`) refuses keyless rows, so the list must
         // agree or the client sees a Download that 404s. (Metadata-only rows, e.g. from seed, exist.)
@@ -210,7 +233,24 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
       },
     });
-    return reply.send({ ok: true, project: project ? { ...project, approvals: await enrichApprovals(prisma, project.approvals), invoices: project.invoices.map((i) => ({ ...i, overdue: isInvoiceOverdue(i) })) } : null });
+
+    let billing: { invoices: unknown[]; carePlan: unknown } | null = null;
+    if (canBilling) {
+      const [projInvoices, orgInvoices, carePlan] = await Promise.all([
+        project
+          ? prisma.invoice.findMany({ where: { tenantId: ctx.session.tenant, projectId: project.id }, orderBy: { createdAt: 'desc' } })
+          : Promise.resolve([]),
+        // Org-scoped invoices (RETAINER, and any pre-project DEPOSIT): projectId null, this exact org.
+        prisma.invoice.findMany({ where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, projectId: null }, orderBy: { createdAt: 'desc' } }),
+        selectClientCarePlan(prisma, ctx.session.tenant, ctx.session.org),
+      ]);
+      const invoices = [...projInvoices, ...orgInvoices]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map((i) => ({ ...i, overdue: isInvoiceOverdue(i) }));
+      billing = { invoices, carePlan };
+    }
+
+    return reply.send({ ok: true, project: project ? { ...project, approvals: await enrichApprovals(prisma, project.approvals) } : null, billing });
   });
 
   // ── Send a message to the delivery team (client → team) ──
@@ -239,24 +279,35 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // ── Invoice detail (client) — scoped, line items + billing contact, no internal fields ──
+  //    Billing is OWNER-only (P3.3): a member is 403'd server-side, even on a direct URL.
   app.get('/portal/invoices/:id', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:read'))) return;
     const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id, { lineItems: { orderBy: { createdAt: 'asc' } } });
     if (!inv) return reply.code(404).send({ ok: false });
     return reply.send({ ok: true, invoice: { ...(await enrichInvoice(inv)), overdue: isInvoiceOverdue(inv) } });
   });
 
   // ── Invoice PDF (client) — scoped, rendered on demand, DRAFT never exposed ──
+  //    Owner-only (P3.3), and broadened to org-scoped invoices (RETAINER has no project).
   app.get('/portal/invoices/:id/pdf', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:read'))) return;
+    // Same org scope as findClientOrgInvoice (project- OR org-scoped), but a concrete include so
+    // lineItems keep their precise type for the PDF renderer. DRAFT is never rendered.
     const inv = await prisma.invoice.findFirst({
-      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, status: { not: 'DRAFT' }, project: { clientOrgId: ctx.session.org } },
-      include: { lineItems: { orderBy: { createdAt: 'asc' } }, project: { select: { clientOrg: { select: { name: true } } } } },
+      where: {
+        id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, status: { not: 'DRAFT' },
+        OR: [{ project: { clientOrgId: ctx.session.org } }, { projectId: null, clientOrgId: ctx.session.org }],
+      },
+      include: { lineItems: { orderBy: { createdAt: 'asc' } } },
     });
     if (!inv) return reply.code(404).send({ ok: false });
-    const pdf = renderInvoicePdfFrom(await enrichInvoice(inv), inv.project?.clientOrg.name ?? '');
+    // Org name for the PDF header: from the caller's org (a RETAINER invoice has no project to hang it on).
+    const org = await prisma.clientOrg.findFirst({ where: { id: ctx.session.org, tenantId: ctx.session.tenant }, select: { name: true } });
+    const pdf = renderInvoicePdfFrom(await enrichInvoice(inv), org?.name ?? '');
     reply.header('content-type', 'application/pdf');
     reply.header('content-disposition', `inline; filename="${inv.number}.pdf"`);
     return reply.send(pdf);
@@ -271,12 +322,9 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(404).send({ ok: false });
     }
     if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay'))) return;
-    // Scope: the invoice must belong to the caller's org and not be a draft.
-    const inv = await prisma.invoice.findFirst({
-      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, status: { not: 'DRAFT' }, project: { clientOrgId: ctx.session.org } },
-      select: { id: true },
-    });
-    if (!inv) return reply.code(404).send({ ok: false });
+    // Scope: the invoice must belong to the caller's org (project- or org-scoped) and not be a draft.
+    const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id);
+    if (!inv || inv.status === 'DRAFT') return reply.code(404).send({ ok: false });
     const result = await markInvoicePaid(prisma, inv.id, 'demo-pay');
     // Keep the Payment record coherent in the stub loop (mirrors the webhook path).
     await prisma.payment.updateMany({ where: { invoiceId: inv.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } });
@@ -291,10 +339,8 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!ctx) return;
     if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay'))) return;
 
-    // Confirm the invoice belongs to the authenticated org.
-    const inv = await prisma.invoice.findFirst({
-      where: { id: (req.params as { id: string }).id, tenantId: ctx.session.tenant, project: { clientOrgId: ctx.session.org } },
-    });
+    // Confirm the invoice belongs to the authenticated org (project- or org-scoped, e.g. RETAINER).
+    const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id);
     if (!inv) return reply.code(404).send({ ok: false });
     // Confirm it is payable and not already paid.
     if (inv.status === 'PAID') return reply.code(409).send({ ok: false, message: 'This invoice is already paid.' });

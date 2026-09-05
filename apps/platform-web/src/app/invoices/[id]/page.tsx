@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Loader2, ArrowLeft, Download, Lock, CheckCircle2, XCircle } from 'lucide-react';
 import { usePortal } from '@/lib/usePortal';
 import { PortalShell } from '@/components/PortalShell';
@@ -13,6 +14,7 @@ type Invoice = {
   id: string; number: string; amountCents: number; currency: string; status: string; overdue?: boolean;
   issuedAt: string | null; dueAt: string | null; paidAt: string | null;
   billingContactName: string | null; paymentUrl: string | null; pdfKey: string | null;
+  kind?: string; billingPeriodStart?: string | null; billingPeriodEnd?: string | null;
   lineItems: LineItem[];
 };
 
@@ -27,7 +29,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 export default function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { me, userName, loading, isOwner } = usePortal();
+  const { me, userName, loading, isOwner, canBilling } = usePortal();
   const [inv, setInv] = useState<Invoice | null | undefined>(undefined);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -56,10 +58,31 @@ export default function InvoiceDetailPage() {
 
   if (loading || !me || inv === undefined) return <div className="grid min-h-screen place-items-center bg-base text-neutral-400"><Loader2 className="animate-spin" /></div>;
 
+  // Billing is OWNER-only, enforced server-side (the API 403s a member here). Mirror that in the UI
+  // so a member on a direct invoice URL gets a clear notice rather than a bare "not found".
+  if (!canBilling) {
+    return (
+      <PortalShell orgName={me.org.name} userName={userName} active="overview" billingAllowed={false}>
+        <div className="mx-auto max-w-3xl">
+          <div className="mt-10 flex flex-col items-center rounded-2xl border border-line bg-surface p-10 text-center">
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-white/[0.04] text-neutral-400"><Lock size={20} /></span>
+            <h1 className="mt-4 text-lg font-bold text-white">Billing is limited to account owners</h1>
+            <p className="mt-1.5 max-w-md text-sm text-neutral-500">Invoices are visible to account owners on your team. Ask an owner if you need billing access.</p>
+            <Link href="/" className="mt-5 rounded-lg border border-line-strong px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05]">Back to home</Link>
+          </div>
+        </div>
+      </PortalShell>
+    );
+  }
+
   const s = inv ? STATUS[inv.overdue ? 'OVERDUE' : inv.status] ?? { label: inv.status, cls: 'bg-white/10 text-neutral-300' } : null;
+  const retainer = inv?.kind === 'RETAINER';
+  const period = retainer && inv?.billingPeriodStart
+    ? `${fmtDate(inv.billingPeriodStart)}${inv.billingPeriodEnd ? ` – ${fmtDate(inv.billingPeriodEnd)}` : ''}`
+    : null;
 
   return (
-    <PortalShell orgName={me.org.name} userName={userName} active="invoices">
+    <PortalShell orgName={me.org.name} userName={userName} active="invoices" billingAllowed={canBilling}>
       <div className="mx-auto max-w-3xl">
         <button onClick={() => router.push('/invoices')} className="mb-4 inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-white"><ArrowLeft size={15} /> All invoices</button>
         {!inv ? (
@@ -79,11 +102,13 @@ export default function InvoiceDetailPage() {
             )}
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-6">
               <div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <h1 className="text-xl font-extrabold tracking-tight text-white">{inv.number}</h1>
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s!.cls}`}>{s!.label}</span>
+                  {retainer && <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-semibold text-primary-light">Care Plan</span>}
                 </div>
                 <div className="mt-1 space-y-0.5 text-sm text-neutral-500">
+                  {period && <div>Billing period {period}</div>}
                   {inv.issuedAt && <div>Issued {fmtDate(inv.issuedAt)}</div>}
                   {inv.status === 'VOIDED' ? <div>Voided — no payment due</div> : inv.status === 'PAID' ? <div>Paid {fmtDate(inv.paidAt)}</div> : inv.dueAt && <div>Due {fmtDate(inv.dueAt)}</div>}
                   {inv.billingContactName && <div>Billed to {inv.billingContactName}</div>}

@@ -63,7 +63,7 @@ export default function OverviewPage() {
   }) : null;
 
   return (
-    <PortalShell orgName={me?.org.name ?? ''} userName={userName} active="overview">
+    <PortalShell orgName={me?.org.name ?? ''} userName={userName} active="overview" billingAllowed={isOwner}>
       <div className="mx-auto max-w-4xl">
         {!me || !data ? (
           <div className="grid place-items-center py-24 text-neutral-400"><Loader2 className="animate-spin" /></div>

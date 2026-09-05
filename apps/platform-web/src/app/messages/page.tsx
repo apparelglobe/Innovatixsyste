@@ -8,7 +8,7 @@ import { api } from '@/lib/portal-api';
 import { fmtDateTime } from '@/lib/fmt';
 
 export default function MessagesPage() {
-  const { me, project, userName, loading, reload } = usePortal();
+  const { me, project, userName, loading, reload, canBilling } = usePortal();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -31,7 +31,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <PortalShell orgName={me.org.name} userName={userName} active="messages">
+    <PortalShell orgName={me.org.name} userName={userName} active="messages" billingAllowed={canBilling}>
       <div className="mx-auto flex h-[calc(100dvh_-_7rem_-_var(--portal-bottom-nav-h)_-_env(safe-area-inset-bottom))] max-w-2xl flex-col md:h-[calc(100vh-8rem)]">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-white">Messages</h1>

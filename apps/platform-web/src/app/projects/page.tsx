@@ -32,7 +32,7 @@ export default function ProjectsPage() {
 }
 
 function ProjectsHub() {
-  const { me, project, userName, loading } = usePortal();
+  const { me, project, userName, loading, canBilling } = usePortal();
   const router = useRouter();
   const params = useSearchParams();
   const tabParam = params.get('tab');
@@ -48,7 +48,7 @@ function ProjectsHub() {
   const total = project?.milestones.length ?? 0;
 
   return (
-    <PortalShell orgName={me.org.name} userName={userName} active="projects">
+    <PortalShell orgName={me.org.name} userName={userName} active="projects" billingAllowed={canBilling}>
       <div className="mx-auto max-w-4xl">
         {!project ? (
           <>

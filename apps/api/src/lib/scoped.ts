@@ -29,8 +29,18 @@ export function findClientOrgProject(prisma: PrismaClient, tenantId: string, cli
   return prisma.project.findFirst({ where: { id, tenantId, clientOrgId } });
 }
 export function findClientOrgInvoice(prisma: PrismaClient, tenantId: string, clientOrgId: string, id: string, include?: Prisma.InvoiceInclude) {
-  // The invoice must belong to a project owned by the caller's org.
-  return prisma.invoice.findFirst({ where: { id, tenantId, project: { clientOrgId } }, ...(include ? { include } : {}) });
+  // Defence-in-depth: a falsy tenant/org must never resolve an invoice. Prisma treats an `undefined`
+  // filter as "no filter", so a blank clientOrgId in the OR below would otherwise match ANY org's
+  // org-scoped invoice within the tenant. For a money path, refuse outright rather than trust the caller.
+  if (!tenantId || !clientOrgId) return Promise.resolve(null);
+  // The invoice must belong to the caller's org — EITHER a project the org owns, OR an org-scoped
+  // invoice whose clientOrgId equals the caller's org (projectId null), i.e. a RETAINER (P3.3). NOTE:
+  // pre-project DEPOSIT invoices carry clientOrgId=null and are intentionally NOT matched here. tenantId
+  // is always folded in, so this never crosses tenants; the clientOrgId equality never crosses orgs.
+  return prisma.invoice.findFirst({
+    where: { id, tenantId, OR: [{ project: { clientOrgId } }, { projectId: null, clientOrgId }] },
+    ...(include ? { include } : {}),
+  });
 }
 export function findClientOrgApproval(prisma: PrismaClient, tenantId: string, clientOrgId: string, id: string) {
   return prisma.approval.findFirst({ where: { id, tenantId, project: { clientOrgId } } });

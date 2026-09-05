@@ -59,7 +59,12 @@ after(async () => { await prisma.$disconnect(); });
 // plan sets its invoices' carePlanId → null (FK ON DELETE SET NULL), so orphan invoices can't match a
 // later test's per-plan query.
 beforeEach(async () => {
-  await prisma.sideEffectJob.deleteMany({ where: { type: 'GENERATE_RETAINER_INVOICE' as never } });
+  // processDueJobs drains the GLOBAL job queue (any type/tenant), so a leftover PENDING job from
+  // ANY other test file — surfaced when the suite runs more than one file — would be claimed here and
+  // pushed through the failing-tx proxy (a ~30s email/network timeout). Clear ALL side-effect jobs, not
+  // just retainer ones, so this file only ever processes jobs it created. (Runner executes files
+  // sequentially, so this never races another file's in-flight jobs.)
+  await prisma.sideEffectJob.deleteMany({});
   await prisma.carePlan.deleteMany({});
 });
 

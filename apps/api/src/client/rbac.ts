@@ -17,7 +17,7 @@
  *   message:send               ✓      ✓
  *   approval:comment           ✓      ✓
  *   approval:decide            ✓      –      (approve/reject deliverables, milestones, UAT, deploy)
- *   invoice:read               ✓      ✓
+ *   invoice:read               ✓      –      (P3.3: whole Billing surface — list/detail/PDF/Care Plan)
  *   invoice:pay                ✓      –
  *   billing:manage             ✓      –      (set invoice billing contact)
  *   client-user:read           ✓      –
@@ -56,11 +56,14 @@ const READ_AND_PARTICIPATE: ClientAction[] = [
   'file:upload',
   'message:send',
   'approval:comment',
-  'invoice:read',
 ];
 
 const OWNER_ONLY: ClientAction[] = [
   'approval:decide',
+  // Billing is OWNER-only (P3.3): the whole billing surface — invoice list/detail/PDF, Care Plan info,
+  // balances — is gated on `invoice:read`. Extensible: a future dedicated "billing access" role for a
+  // finance/accounting contact is simply GRANTED `invoice:read`; no redesign of this matrix is needed.
+  'invoice:read',
   'invoice:pay',
   'billing:manage',
   'client-user:read',

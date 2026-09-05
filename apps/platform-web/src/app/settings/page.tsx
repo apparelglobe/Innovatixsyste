@@ -21,7 +21,7 @@ type Member = {
 const fullName = (m: Member) => [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
 
 export default function SettingsPage() {
-  const { me, userName, isOwner, loading } = usePortal();
+  const { me, userName, isOwner, canBilling, loading } = usePortal();
   const [members, setMembers] = useState<Member[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <PortalShell orgName={me.org.name} userName={userName} active="settings">
+    <PortalShell orgName={me.org.name} userName={userName} active="settings" billingAllowed={canBilling}>
       <div className="mx-auto max-w-3xl space-y-8">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-white">Settings</h1>

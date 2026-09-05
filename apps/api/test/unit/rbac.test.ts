@@ -8,14 +8,16 @@ import { clientCan } from '../../src/client/rbac';
 import { can as staffCan } from '../../src/staff/rbac';
 
 test('client RBAC: OWNER-only actions are denied to MEMBER', () => {
-  for (const a of ['approval:decide', 'invoice:pay', 'billing:manage', 'client-user:invite', 'client-user:role-change', 'client-user:deactivate'] as const) {
+  // invoice:read is OWNER-only (P3.3): the whole Billing surface is gated on it, so a MEMBER
+  // has no invoice list/detail/PDF/Care Plan access.
+  for (const a of ['approval:decide', 'invoice:read', 'invoice:pay', 'billing:manage', 'client-user:invite', 'client-user:role-change', 'client-user:deactivate'] as const) {
     assert.equal(clientCan('OWNER', a), true, `OWNER should have ${a}`);
     assert.equal(clientCan('MEMBER', a), false, `MEMBER should NOT have ${a}`);
   }
 });
 
-test('client RBAC: MEMBER may read + participate', () => {
-  for (const a of ['project:read', 'milestone:read', 'report:read', 'file:read', 'file:upload', 'message:send', 'approval:comment', 'invoice:read'] as const) {
+test('client RBAC: MEMBER may read + participate (but NOT billing)', () => {
+  for (const a of ['project:read', 'milestone:read', 'report:read', 'file:read', 'file:upload', 'message:send', 'approval:comment'] as const) {
     assert.equal(clientCan('MEMBER', a), true, `MEMBER should have ${a}`);
   }
 });

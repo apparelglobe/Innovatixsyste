@@ -20,10 +20,13 @@ const NAV = [
 ];
 
 export function PortalShell({
-  orgName, userName, active, children,
-}: { orgName: string; userName: string; active: string; children: React.ReactNode }) {
+  orgName, userName, active, children, billingAllowed = false,
+}: { orgName: string; userName: string; active: string; children: React.ReactNode; billingAllowed?: boolean }) {
   const router = useRouter();
   const initials = userName.split(' ').map((s) => s[0]).slice(0, 2).join('').toUpperCase() || 'U';
+  // Billing is OWNER-only (P3.3). Hiding the nav item is cosmetic only — every billing route is
+  // enforced server-side — but it keeps a member from clicking into a screen they can't use.
+  const nav = NAV.filter((n) => n.key !== 'invoices' || billingAllowed);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -45,7 +48,7 @@ export function PortalShell({
           <Logo className="h-7 w-auto" />
         </div>
         <nav className="flex-1 space-y-0.5 px-3 py-2">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <a key={n.key} href={n.href}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${active === n.key ? 'bg-primary/15 font-semibold text-primary-light' : 'text-neutral-400 hover:bg-white/[0.04] hover:text-white'}`}>
               {n.icon} {n.label}
@@ -93,7 +96,7 @@ export function PortalShell({
 
       {/* Mobile bottom nav — the sidebar is desktop-only, so this is the sole nav (and Sign out is in the account menu above) on phones. */}
       <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        {NAV.map((n) => (
+        {nav.map((n) => (
           <a key={n.key} href={n.href}
             className={`flex h-[var(--portal-bottom-nav-h)] flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition ${active === n.key ? 'text-primary-light' : 'text-neutral-500 hover:text-neutral-300'}`}>
             {n.icon} {n.label}

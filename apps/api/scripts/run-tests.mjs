@@ -44,12 +44,18 @@ for (const category of toRun) {
     console.log(`(no ${category} tests)`);
     continue;
   }
-  const res = spawnSync(
-    'npx',
-    ['tsx', '--test', '--test-reporter=spec', ...files],
-    { stdio: 'inherit', cwd: apiRoot, env: { ...process.env, NODE_ENV: 'test' } },
-  );
-  if ((res.status ?? 1) !== 0) failed = true;
+  // Run files ONE AT A TIME. The integration suite shares a single database and several files perform
+  // GLOBAL-scope operations (the retainer worker drains the whole job queue; some beforeEach hooks wipe
+  // a table). Running files in parallel (node:test's default when handed many files) lets those global
+  // operations corrupt each other. Sequential per-file execution keeps the shared DB deterministic.
+  for (const file of files) {
+    const res = spawnSync(
+      'npx',
+      ['tsx', '--test', '--test-reporter=spec', file],
+      { stdio: 'inherit', cwd: apiRoot, env: { ...process.env, NODE_ENV: 'test' } },
+    );
+    if ((res.status ?? 1) !== 0) failed = true;
+  }
 }
 
 process.exit(failed ? 1 : 0);

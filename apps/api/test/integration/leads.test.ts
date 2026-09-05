@@ -156,6 +156,10 @@ test('10b. HTTP rate limit — repeated submissions from one IP → 429 (proves 
 });
 
 test('11-15. side-effect retry → backoff → dead-letter (failing job)', async () => {
+  // processDueJobs below drains the GLOBAL job queue, so first clear any PENDING jobs left by earlier
+  // tests/files — otherwise a leftover email job would be processed here (a real send → ~30s timeout)
+  // and skew this test. This file and retainer-worker are the only two processDueJobs drivers.
+  await prisma.sideEffectJob.deleteMany({});
   // A job that references a non-existent lead throws in its handler → exercises
   // the generic retry/backoff/dead-letter path used by email/notify/assignment.
   // leadId null → the ACK_EMAIL handler's findUniqueOrThrow throws → retry path.
