@@ -18,6 +18,7 @@ type Overview = {
     milestonesDone: number; milestonesTotal: number; openApprovals: number;
     pendingApproval?: { id: string; subject: string; type?: string | null };
     payableInvoice?: { id: string; number: string; amountCents: number; overdue?: boolean } | null;
+    carePlan?: { active: boolean; nextReportAt?: string | null } | null;
     nextMilestone?: { name: string; dueDate: string | null };
     milestones: { id: string; name: string; status: string; dueDate: string | null }[];
     latestReport?: { title: string; kind: string; summary: string; publishedAt: string };
@@ -58,6 +59,7 @@ export default function OverviewPage() {
     projectStatus: p.status as ProjectStatus,
     pendingApproval: p.pendingApproval ? { id: p.pendingApproval.id, subject: p.pendingApproval.subject, type: p.pendingApproval.type } : null,
     payableInvoice: p.payableInvoice ?? null,
+    carePlan: p.carePlan ?? null,
     nextUpdateAt: p.nextUpdateAt,
     nextUpdateNote: p.nextUpdateNote,
   }) : null;
@@ -91,7 +93,7 @@ export default function OverviewPage() {
               {state.nextUpdate && (
                 <p className="mt-3 inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-neutral-200">
                   <Clock size={15} className="text-primary-light" />
-                  Next update by <Timestamp value={state.nextUpdate.at} withZone className="font-semibold text-white" />
+                  {state.nextUpdate.label ?? 'Next update by'} <Timestamp value={state.nextUpdate.at} withZone className="font-semibold text-white" />
                   {state.nextUpdate.note && <span className="text-neutral-400">· {state.nextUpdate.note}</span>}
                 </p>
               )}

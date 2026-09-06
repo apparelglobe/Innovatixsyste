@@ -16,6 +16,7 @@ import { normalizeEmail, cleanText, cleanMultiline } from '../lib/sanitize';
 import { parseDateInput } from '../lib/dates';
 import { etDayNoonUTC } from '../lib/billing-period';
 import { MOMENT, MOMENT_MESSAGE, CURATED_MOMENT_TYPES } from '../lib/relationship-moments';
+import { emitRetainerActivated } from '../lib/care-plan';
 import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPassword } from '../staff/auth';
 import { can, type Action } from '../staff/rbac';
 import { notifyClientOrg } from '../notifications/service';
@@ -434,6 +435,19 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (changingStatus) await audit(ctx.tenantId, ctx.session.sub, 'CarePlan', cp.id, `CARE_PLAN_${b.data.status}`, { from: cp.status });
+    // P3.4 — on activation, emit the RETAINER_ACTIVATED relationship-timeline moment. Idempotent + atomic
+    // (deterministic PK id + P2002 catch), so retries, concurrent requests, and PAUSED→ACTIVE reactivation
+    // never create a duplicate moment. Attempted for every →ACTIVE; only the plan's FIRST activation writes.
+    // BEST-EFFORT: the moment is a cosmetic timeline entry — the authoritative activation has already
+    // committed above, so a moment-write failure must never roll it back or 500 the caller. P2002 is handled
+    // inside the emitter (idempotency); any OTHER transient error is logged and swallowed here.
+    if (changingStatus && b.data.status === 'ACTIVE') {
+      try {
+        await emitRetainerActivated(prisma, { id: cp.id, tenantId: ctx.tenantId, clientOrgId: cp.clientOrgId });
+      } catch (err) {
+        req.log.error({ err: err instanceof Error ? err.message : String(err), carePlanId: cp.id }, 'RETAINER_ACTIVATED emit failed (activation already committed)');
+      }
+    }
     return reply.send({ ok: true });
   });
 

@@ -25,7 +25,7 @@ import { storage } from '../storage';
 import { notifyStaff } from '../notifications/service';
 import { requireClientPermission, resolveClientRole } from '../client/authz';
 import { clientCan } from '../client/rbac';
-import { selectClientCarePlan } from '../lib/care-plan';
+import { selectClientCarePlan, selectClientCarePlanStatus } from '../lib/care-plan';
 import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
 import { findClientOrgInvoice, findClientVisibleFile } from '../lib/scoped';
@@ -154,6 +154,11 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       if (inv) payableInvoice = { id: inv.id, number: inv.number, amountCents: inv.amountCents, overdue: isInvoiceOverdue(inv) };
     }
 
+    // P3.4 — the MONEY-FREE Care Plan relationship-status signal ({ active, nextReportAt }), served to
+    // ALL roles (owner + member). It carries no price/invoice/internal data, so it does not touch P3.3's
+    // owner-only billing: a member gets this non-financial "we're monitoring" state but still no billing.
+    const carePlan = await selectClientCarePlanStatus(prisma, tenant, org);
+
     return reply.send({
       ok: true,
       project: {
@@ -169,6 +174,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         openApprovals: project.approvals.length,
         pendingApproval: project.approvals[0] && { id: project.approvals[0].id, subject: project.approvals[0].subject, type: project.approvals[0].type },
         payableInvoice,
+        carePlan,
         nextMilestone: nextMilestone && { name: nextMilestone.name, dueDate: nextMilestone.dueDate },
         milestones: project.milestones.map((m) => ({ id: m.id, name: m.name, status: m.status, dueDate: m.dueDate })),
         latestReport: project.reports[0] && {

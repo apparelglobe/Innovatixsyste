@@ -47,8 +47,9 @@ export type WorkspaceState = {
   /** The single next action, or null when it's our turn / paused / done. */
   action: NextAction | null;
   /** Only populated while turn === 'US' AND staff have committed a date. Null otherwise —
-   *  the card must degrade gracefully (body already conveys "we're on it"). */
-  nextUpdate: { at: string; note?: string | null } | null;
+   *  the card must degrade gracefully (body already conveys "we're on it"). `label` overrides the
+   *  card's default "Next update by" prefix (e.g. "Next report" for the Care Plan state). */
+  nextUpdate: { at: string; note?: string | null; label?: string } | null;
 };
 
 /** Signals the engine derives from — assembled from /portal/overview (+ the S3 next-update
@@ -60,6 +61,9 @@ export type WorkspaceSignals = {
   payableInvoice?: { id: string; number: string; amountCents: number; overdue?: boolean } | null;
   nextUpdateAt?: string | null;
   nextUpdateNote?: string | null;
+  /** P3.4 — money-free Care Plan relationship status from /portal/overview (member-safe: no price/invoice).
+   *  `active` is true only for a live plan; `nextReportAt` is the staff-set next-report promise date. */
+  carePlan?: { active: boolean; nextReportAt?: string | null } | null;
 };
 
 /** Button copy per approval type; falls back to a generic review label. */
@@ -122,10 +126,25 @@ function payInvoiceState(inv: { id: string; number: string; amountCents: number 
   };
 }
 
+/** P3.4 — the long-term "Care Plan active" state: the relationship keeps going after the project ends
+ *  (Canon §0). Money-free (no price/invoice), so it is shown to owners AND members alike. `nextReportAt`
+ *  renders as the "Next report <date>" promise so the account never goes dark post-launch. */
+function carePlanState(nextReportAt: string | null): WorkspaceState {
+  return {
+    turn: 'US', tone: 'success', statusLabel: 'Care Plan active',
+    title: "Care Plan active — we've got you covered",
+    body: "We're monitoring and supporting your project as part of your Care Plan.",
+    action: null,
+    nextUpdate: nextReportAt ? { at: nextReportAt, note: null, label: 'Next report' } : null,
+  };
+}
+
 /**
- * Derive the one workspace state from all signals. Priority (client actions win, most-pressing
- * first): overdue invoice → pending approval → invoice due → the delivery phase (our turn /
- * paused / done). Adjust this chain to change which single action surfaces when several compete.
+ * Derive the one workspace state from all signals. Priority (client actions win, most-pressing first):
+ * overdue invoice → pending approval → invoice due → Care Plan (active, post-launch) → the delivery
+ * phase. A Care Plan message can therefore NEVER hide an approval or a payable invoice; and because a
+ * member never receives a payableInvoice, a member still lands on the non-financial Care Plan / phase
+ * state. Adjust this chain to change which single state surfaces when several compete.
  */
 export function deriveWorkspaceState(s: WorkspaceSignals): WorkspaceState {
   const inv = s.payableInvoice ?? null;
@@ -133,6 +152,12 @@ export function deriveWorkspaceState(s: WorkspaceSignals): WorkspaceState {
   if (inv && inv.overdue) return payInvoiceState(inv, true);
   if (s.pendingApproval) return approvalState(s.pendingApproval);
   if (inv) return payInvoiceState(inv, false);
+
+  // A live Care Plan owns the "our turn" state once the project is launched/complete — the retainer IS
+  // the ongoing monitoring & support, so it replaces the generic phase copy and keeps the account alive.
+  if (s.carePlan?.active && (s.projectStatus === 'LAUNCHED' || s.projectStatus === 'COMPLETE')) {
+    return carePlanState(s.carePlan.nextReportAt ?? null);
+  }
 
   const phase = PHASE[s.projectStatus] ?? PHASE.IN_PROGRESS;
   return {

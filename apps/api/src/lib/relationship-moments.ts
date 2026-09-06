@@ -45,4 +45,6 @@ export const MOMENT_MESSAGE: Record<string, string> = {
   [MOMENT.PROJECT_STARTED]: 'Project started',
   [MOMENT.MILESTONE_APPROVED]: 'Milestone approved',
   [MOMENT.PROJECT_LAUNCHED]: 'Project launched',
+  // P3.4 — static + money-free (rendered to all roles on the client timeline; never embed price/amount).
+  [MOMENT.RETAINER_ACTIVATED]: 'Care Plan activated — monitoring & support',
 };

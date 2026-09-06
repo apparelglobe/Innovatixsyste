@@ -13,6 +13,7 @@
  *      → null → no Care Plan card.
  */
 import type { PrismaClient } from '@prisma/client';
+import { MOMENT, MOMENT_MESSAGE } from './relationship-moments';
 
 /** Exactly the fields safe to expose to a client. */
 const CLIENT_SAFE_SELECT = {
@@ -52,4 +53,67 @@ export async function selectClientCarePlan(
     select: CLIENT_SAFE_SELECT,
   });
   return (terminal as ClientCarePlan | null) ?? null; // DRAFT is never selected
+}
+
+/**
+ * P3.4 — the MONEY-FREE relationship-status projection for the client workspace. This is deliberately
+ * SEPARATE from selectClientCarePlan (which carries monthlyAmountCents and is OWNER-only): it returns
+ * ONLY whether a Care Plan is live plus the next-report date, so it is safe to serve to EVERY client
+ * role (owner + member) without regressing P3.3's owner-only billing.
+ *
+ * "active" is a COARSE boolean over the live-and-billing states (ACTIVE | PAST_DUE) — the raw status
+ * enum NEVER leaves this function, so a member can't learn a plan is PAST_DUE (a payment-overdue fact).
+ * PAUSED / DRAFT / terminal / no-plan all resolve to null → no workspace line (falls through to phase).
+ * nextReportNote is intentionally NOT exposed (it is a staff field, not marked client-visible). The
+ * partial-unique index guarantees ≤1 plan in {ACTIVE,PAST_DUE}, so findFirst is unambiguous.
+ */
+export async function selectClientCarePlanStatus(
+  prisma: PrismaClient,
+  tenantId: string,
+  clientOrgId: string,
+): Promise<{ active: boolean; nextReportAt: Date | null } | null> {
+  if (!tenantId || !clientOrgId) return null; // defence-in-depth (Prisma treats undefined as no-filter)
+  const plan = await prisma.carePlan.findFirst({
+    where: { tenantId, clientOrgId, status: { in: ['ACTIVE', 'PAST_DUE'] } },
+    select: { nextReportAt: true },
+  });
+  return plan ? { active: true, nextReportAt: plan.nextReportAt } : null;
+}
+
+/**
+ * P3.4 — emit the curated RETAINER_ACTIVATED relationship-timeline moment, ATOMICALLY once per Care Plan.
+ *
+ * Concurrency-safety (not a raceable count-then-create): the PortalActivity row is written with a
+ * DETERMINISTIC primary-key id `retainer-activated:<carePlanId>`. Postgres's primary-key unique index is
+ * the guard — two concurrent activations both attempt this exact id, exactly ONE INSERT commits, and the
+ * loser raises P2002 which we swallow as "already emitted". This also makes ordinary retries and a
+ * PAUSED→ACTIVE reactivation of the same plan no-ops (same id). No new column/constraint → no migration.
+ *
+ * The moment message is STATIC and money-free (rendered to all roles on the client timeline). A Care Plan
+ * is org-scoped and PortalActivity.projectId is NOT NULL, so the row attaches to the org's most-recent
+ * project; an org with a live plan but no project simply records nothing (documented edge, no migration).
+ */
+export async function emitRetainerActivated(
+  prisma: PrismaClient,
+  plan: { id: string; tenantId: string; clientOrgId: string },
+): Promise<void> {
+  const project = await prisma.project.findFirst({
+    where: { tenantId: plan.tenantId, clientOrgId: plan.clientOrgId },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true },
+  });
+  if (!project) return; // no project to hang the moment on — skip
+  try {
+    await prisma.portalActivity.create({
+      data: {
+        id: `retainer-activated:${plan.id}`,
+        tenantId: plan.tenantId,
+        projectId: project.id,
+        type: MOMENT.RETAINER_ACTIVATED,
+        message: MOMENT_MESSAGE[MOMENT.RETAINER_ACTIVATED],
+      },
+    });
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'P2002') throw err; // already emitted (race / retry / reactivation) → no-op
+  }
 }
