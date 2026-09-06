@@ -5,7 +5,7 @@ import { ArrowRight, Check, Loader2 } from 'lucide-react';
 import { analytics } from '@innovatix/analytics';
 import { captureFirstTouch, getAttribution } from '@/lib/attribution';
 
-type Variant = 'contact' | 'book';
+type Variant = 'contact' | 'book' | 'quote';
 type State = 'idle' | 'submitting' | 'success' | 'error';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4040/v1';
@@ -52,6 +52,8 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
     return new URLSearchParams(window.location.search).get('service') || '';
   });
   const serviceOptions = presetService && !SERVICE_OPTIONS.includes(presetService) ? [presetService, ...SERVICE_OPTIONS] : SERVICE_OPTIONS;
+  // Quote + book variants collect budget/timeline and require a project description; contact does not.
+  const wantsQualifiers = variant === 'book' || variant === 'quote';
 
   useEffect(() => {
     captureFirstTouch();
@@ -80,7 +82,7 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
       phone: String(fd.get('phone') || '') || undefined,
       company: String(fd.get('company') || '') || undefined,
       jobTitle: String(fd.get('jobTitle') || '') || undefined,
-      form: variant === 'book' ? 'BOOK' : 'CONTACT',
+      form: variant === 'book' ? 'BOOK' : variant === 'quote' ? 'QUOTE' : 'CONTACT',
       serviceInterest: String(fd.get('serviceInterest') || '') || undefined,
       projectDescription: String(fd.get('projectDescription') || '') || undefined,
       budgetRange: String(fd.get('budgetRange') || '') || undefined,
@@ -115,7 +117,11 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
       <div className="rounded-xl border border-primary/30 bg-primary/5 p-8 text-center">
         <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary"><Check size={22} /></div>
         <h3 className="mt-4 text-lg font-bold text-neutral-900">Your request has been received</h3>
-        <p className="mt-2 text-sm text-neutral-600">Thanks — our team will contact you shortly to discuss your project.</p>
+        <p className="mt-2 text-sm text-neutral-600">
+          {variant === 'quote'
+            ? 'Thanks — we’ll review your request and follow up shortly with next steps.'
+            : 'Thanks — our team will contact you shortly to discuss your project.'}
+        </p>
       </div>
     );
   }
@@ -148,7 +154,7 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
         </select>
       ))}
 
-      {variant === 'book' && (
+      {wantsQualifiers && (
         <div className="grid gap-4 sm:grid-cols-2">
           {field('Estimated budget', (
             <select name="budgetRange" className={inputCls} defaultValue="">
@@ -166,9 +172,9 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
       )}
 
       {field(
-        variant === 'book' ? 'Tell us about your project' : 'How can we help?',
-        <textarea name="projectDescription" rows={4} maxLength={5000} className={inputCls} placeholder="A few sentences about your goals, systems, and constraints." required={variant === 'book'} />,
-        variant === 'book',
+        wantsQualifiers ? 'Tell us about your project' : 'How can we help?',
+        <textarea name="projectDescription" rows={4} maxLength={5000} className={inputCls} placeholder="A few sentences about your goals, systems, and constraints." required={wantsQualifiers} />,
+        wantsQualifiers,
       )}
 
       <label className="flex items-start gap-2.5 text-sm text-neutral-400">
@@ -189,6 +195,7 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
       >
         {state === 'submitting' ? <><Loader2 size={18} className="animate-spin" /> Sending…</>
           : variant === 'book' ? <>Continue to scheduling <ArrowRight size={18} /></>
+          : variant === 'quote' ? <>Request a quote <ArrowRight size={18} /></>
           : <>Send message <ArrowRight size={18} /></>}
       </button>
     </form>

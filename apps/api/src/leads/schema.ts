@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 
-export const LeadFormEnum = z.enum(['CONTACT', 'BOOK', 'SERVICE_CTA', 'HOMEPAGE_CTA', 'LANDING_PAGE']);
+export const LeadFormEnum = z.enum(['CONTACT', 'BOOK', 'SERVICE_CTA', 'HOMEPAGE_CTA', 'LANDING_PAGE', 'QUOTE']);
 
 export const leadRequestSchema = z
   .object({

@@ -19,7 +19,7 @@ export const EVENTS = {
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
-export type FormKind = 'contact' | 'book';
+export type FormKind = 'contact' | 'book' | 'quote';
 
 /** Typed, SAFE parameters per event. Any other key is dropped at dispatch. */
 export type EventParams = {

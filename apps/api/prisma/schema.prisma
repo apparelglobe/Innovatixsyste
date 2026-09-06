@@ -1123,6 +1123,7 @@ enum InquiryForm {
   SERVICE_CTA
   HOMEPAGE_CTA
   LANDING_PAGE
+  QUOTE
 }
 
 enum ConsentStatus {

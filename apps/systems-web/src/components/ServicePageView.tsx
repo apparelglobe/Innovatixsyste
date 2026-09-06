@@ -17,6 +17,8 @@ export function ServicePageView({ page: p }: { page: ServicePage }) {
   // Carry the service context into the booking form (prefills serviceInterest).
   const navLabel = SERVICE_CATEGORIES.flatMap((c) => c.items).find((it) => it.href === path)?.label ?? p.h1;
   const bookHref = `/book?service=${encodeURIComponent(navLabel)}`;
+  // Same service context flows into the quote form (prefills serviceInterest).
+  const quoteHref = `/request-a-quote?service=${encodeURIComponent(navLabel)}`;
 
   const jsonLd = [
     serviceJsonLd({ name: p.h1, description: p.metaDescription, path }),
@@ -47,8 +49,9 @@ export function ServicePageView({ page: p }: { page: ServicePage }) {
           <div className="mt-6 max-w-2xl space-y-4 text-lg leading-relaxed text-neutral-600">
             {p.intro.map((para, i) => <p key={i}>{para}</p>)}
           </div>
-          <div className="mt-8">
+          <div className="mt-8 flex flex-wrap gap-3">
             <Button href={bookHref} size="lg" data-cta="Book a Consultation" data-cta-loc="service-page">Book a Consultation <ArrowRight size={18} /></Button>
+            <Button href={quoteHref} size="lg" variant="secondary" data-cta="Request a Quote" data-cta-loc="service-page">Request a Quote <ArrowRight size={18} /></Button>
           </div>
         </Container>
       </section>
@@ -165,7 +168,10 @@ export function ServicePageView({ page: p }: { page: ServicePage }) {
               ))}
             </div>
           </div>
-          <Button href={bookHref} size="lg" data-cta="Book a Consultation" data-cta-loc="service-page">Book a Consultation <ArrowRight size={18} /></Button>
+          <div className="flex flex-wrap gap-3">
+            <Button href={bookHref} size="lg" data-cta="Book a Consultation" data-cta-loc="service-page">Book a Consultation <ArrowRight size={18} /></Button>
+            <Button href={quoteHref} size="lg" variant="secondary" data-cta="Request a Quote" data-cta-loc="service-page">Request a Quote <ArrowRight size={18} /></Button>
+          </div>
         </Container>
       </section>
     </>

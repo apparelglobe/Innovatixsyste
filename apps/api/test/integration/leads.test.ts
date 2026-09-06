@@ -348,3 +348,22 @@ test('23. signature verifier rejects tampered body', () => {
   assert.equal(verifyCalcomSignature('{"a":2}', sig, 'secret'), false);
   assert.equal(verifyCalcomSignature(body, sig, 'wrong'), false);
 });
+
+test('24. QUOTE form value → 202; intake pipeline unchanged (1 lead / 1 inquiry form=QUOTE / attribution / 4 jobs) + idempotent replay', async () => {
+  const email = `quote-${uid()}@example.com`;
+  const p = base({ businessEmail: email, form: 'QUOTE', budgetRange: '$50k–$100k', desiredStartWindow: '1–3 months' });
+  const r1 = await post(p);
+  assert.equal(r1.statusCode, 202);
+  assert.equal(await prisma.lead.count({ where: { tenantId, normalizedEmail: email } }), 1);
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  const inqs = await prisma.leadInquiry.findMany({ where: { leadId: lead.id } });
+  assert.equal(inqs.length, 1);
+  assert.equal(inqs[0].form, 'QUOTE'); // the new enum value is persisted as-is
+  assert.equal(await prisma.leadAttribution.count({ where: { inquiry: { leadId: lead.id } } }), 1);
+  assert.equal(await prisma.sideEffectJob.count({ where: { leadId: lead.id } }), 4);
+  // Idempotency replay (same key) → no new inquiry, still exactly 4 jobs (dedup pipeline unchanged).
+  const r2 = await post(p);
+  assert.equal(r2.statusCode, 202);
+  assert.equal(await prisma.leadInquiry.count({ where: { leadId: lead.id } }), 1);
+  assert.equal(await prisma.sideEffectJob.count({ where: { leadId: lead.id } }), 4);
+});
