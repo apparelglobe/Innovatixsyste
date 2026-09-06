@@ -17,6 +17,7 @@ import { parseDateInput } from '../lib/dates';
 import { etDayNoonUTC } from '../lib/billing-period';
 import { MOMENT, MOMENT_MESSAGE, CURATED_MOMENT_TYPES } from '../lib/relationship-moments';
 import { emitRetainerActivated } from '../lib/care-plan';
+import { sendFileDownload } from '../lib/download';
 import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPassword } from '../staff/auth';
 import { can, type Action } from '../staff/rbac';
 import { notifyClientOrg } from '../notifications/service';
@@ -743,11 +744,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const file = await prisma.projectFile.findFirst({ where: { id: (req.params as { id: string }).id, tenantId: ctx.tenantId, deletedAt: null, state: 'AVAILABLE' } });
     if (!file?.storageKey) return reply.code(404).send({ ok: false });
     await audit(ctx.tenantId, ctx.session.sub, 'ProjectFile', file.id, 'FILE_DOWNLOADED', { version: file.version });
-    const signed = await storage().getSignedUrl(file.storageKey, config.S3_SIGNED_URL_TTL_SECONDS);
-    if (signed) return reply.redirect(signed);
-    reply.header('content-type', file.mimeType || 'application/octet-stream');
-    reply.header('content-disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
-    return reply.send(await storage().getStream(file.storageKey));
+    return sendFileDownload(reply, { storageKey: file.storageKey, mimeType: file.mimeType, name: file.name });
   });
 
   app.delete('/admin/files/:id', async (req, reply) => {

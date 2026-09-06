@@ -21,7 +21,6 @@ import { config } from '../config';
 import {
   PORTAL_COOKIE, PORTAL_COOKIE_OPTS, signSession, verifySession, verifyPassword,
 } from './auth';
-import { storage } from '../storage';
 import { notifyStaff } from '../notifications/service';
 import { requireClientPermission, resolveClientRole } from '../client/authz';
 import { clientCan } from '../client/rbac';
@@ -29,6 +28,7 @@ import { selectClientCarePlan, selectClientCarePlanStatus } from '../lib/care-pl
 import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
 import { findClientOrgInvoice, findClientVisibleFile } from '../lib/scoped';
+import { sendFileDownload } from '../lib/download';
 import { randomUUID } from 'node:crypto';
 
 type Ctx = { session: NonNullable<ReturnType<typeof verifySession>> };
@@ -411,11 +411,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     const file = await findClientVisibleFile(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id);
     if (!file?.storageKey) return reply.code(404).send({ ok: false });
     await prisma.auditEvent.create({ data: { tenantId: ctx.session.tenant, entityType: 'ProjectFile', entityId: file.id, action: 'FILE_DOWNLOADED', actorType: 'CLIENT', actorId: ctx.session.sub, data: { via: 'portal', version: file.version } } }).catch(() => undefined);
-    const signed = await storage().getSignedUrl(file.storageKey, config.S3_SIGNED_URL_TTL_SECONDS);
-    if (signed) return reply.redirect(signed); // S3: short-lived signed URL
-    reply.header('content-type', file.mimeType || 'application/octet-stream');
-    reply.header('content-disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
-    return reply.send(await storage().getStream(file.storageKey));
+    return sendFileDownload(reply, { storageKey: file.storageKey, mimeType: file.mimeType, name: file.name });
   });
 
   // ── Milestone/approval decision (write) ──

@@ -22,6 +22,7 @@ let staffAuthz: string;
 let orgA: { id: string }, projectA: { id: string };
 let ownerA: { id: string; clientOrgId: string; email: string };
 let ownerB: { id: string; clientOrgId: string; email: string };
+let memberA: { id: string; clientOrgId: string; email: string };
 
 const pdf = () => Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from(`body-${uid()}\n`), Buffer.from('%%EOF')]);
 const EICAR = Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*');
@@ -54,9 +55,10 @@ before(async () => {
   orgA = await prisma.clientOrg.create({ data: { tenantId, name: 'File A', slug: `fa-${uid()}` } });
   const orgB = await prisma.clientOrg.create({ data: { tenantId, name: 'File B', slug: `fb-${uid()}` } });
   projectA = await prisma.project.create({ data: { tenantId, clientOrgId: orgA.id, name: 'Proj A' } });
-  const mk = async (o: string, r: 'OWNER') => { const e = `${r}-${uid()}@ex.com`; return prisma.clientUser.create({ data: { tenantId, clientOrgId: o, email: e, normalizedEmail: e, passwordHash: 'x', role: r } }); };
+  const mk = async (o: string, r: 'OWNER' | 'MEMBER') => { const e = `${r}-${uid()}@ex.com`; return prisma.clientUser.create({ data: { tenantId, clientOrgId: o, email: e, normalizedEmail: e, passwordHash: 'x', role: r } }); };
   ownerA = await mk(orgA.id, 'OWNER');
   ownerB = await mk(orgB.id, 'OWNER');
+  memberA = await mk(orgA.id, 'MEMBER');
 });
 after(async () => { __setStorageForTest(null); await app.close(); await prisma.$disconnect(); });
 
@@ -159,4 +161,73 @@ test('object writes are idempotent for a given key (safe re-completion)', async 
   const h = await storage().head(key);
   assert.equal(h.exists, true);
   assert.equal(h.size, bytes.length);
+});
+
+// ── Download hardening: deterministic Content-Length (fix/download-content-length) ──
+const mkDownloadable = (bytes: Buffer, mime: string, name: string) => {
+  const key = `tenant/${tenantId}/org/${orgA.id}/project/${projectA.id}/file/${uid()}/v/1/x.bin`;
+  return storage().put(key, bytes, mime).then(() =>
+    prisma.projectFile.create({ data: { tenantId, projectId: projectA.id, name, mimeType: mime, storageKey: key, storageProvider: 'local', version: 1, isCurrent: true, state: 'AVAILABLE', clientVisible: true } as never }));
+};
+
+test('download: exact Content-Length + byte-identical body + preserved Content-Type/Disposition (staff & client owner)', async () => {
+  const bytes = pdf();
+  const f = await mkDownloadable(bytes, 'application/pdf', 'report card.pdf');
+  for (const [who, headers, url] of [
+    ['staff', { authorization: staffAuthz }, `/v1/admin/files/${f.id}/download`],
+    ['owner', ownerAuth(ownerA), `/v1/portal/files/${f.id}/download`],
+  ] as const) {
+    const res = await app.inject({ method: 'GET', url, headers });
+    assert.equal(res.statusCode, 200, who);
+    assert.equal(res.headers['content-length'], String(bytes.length), `${who}: exact Content-Length`);
+    assert.equal(Buffer.compare(res.rawPayload, bytes), 0, `${who}: byte-identical body`);
+    assert.match(String(res.headers['content-type']), /^application\/pdf/, `${who}: Content-Type preserved`);
+    assert.equal(res.headers['content-disposition'], 'attachment; filename="report%20card.pdf"', `${who}: Content-Disposition preserved`);
+  }
+  // Permissions unchanged: cross-org owner still 404; a keyless row still 404 (guarded before the helper).
+  assert.equal((await app.inject({ method: 'GET', url: `/v1/portal/files/${f.id}/download`, headers: ownerAuth(ownerB) })).statusCode, 404);
+  const keyless = await prisma.projectFile.create({ data: { tenantId, projectId: projectA.id, name: 'nokey.pdf', storageKey: null, storageProvider: 'local', version: 1, isCurrent: true, state: 'AVAILABLE', clientVisible: true } as never });
+  assert.equal((await app.inject({ method: 'GET', url: `/v1/admin/files/${keyless.id}/download`, headers: { authorization: staffAuthz } })).statusCode, 404);
+});
+
+test('download: a signed-URL (S3-style) provider still 302-redirects and is NOT given a forced Content-Length', async () => {
+  const f = await mkDownloadable(pdf(), 'application/pdf', 's3.pdf');
+  const signedStore: FileStorage = {
+    provider: 's3', async put() {}, async head() { return { exists: true, size: 123 }; }, async getBytes() { return null; },
+    async getStream() { return null; }, async getSignedUrl() { return 'https://signed.example/obj?sig=x'; }, async delete() {},
+  };
+  __setStorageForTest(signedStore);
+  try {
+    const res = await app.inject({ method: 'GET', url: `/v1/admin/files/${f.id}/download`, headers: { authorization: staffAuthz } });
+    assert.equal(res.statusCode, 302);
+    assert.equal(res.headers.location, 'https://signed.example/obj?sig=x');
+    assert.notEqual(res.headers['content-length'], '123'); // never force the remote head() size onto the redirect
+  } finally { __setStorageForTest(null); }
+});
+
+test('client MEMBER download authorization is unchanged: downloads own-org client-visible file (200, hardened); internal → 404', async () => {
+  const bytes = pdf();
+  const f = await mkDownloadable(bytes, 'application/pdf', 'member.pdf'); // client-visible, org A
+  const res = await app.inject({ method: 'GET', url: `/v1/portal/files/${f.id}/download`, headers: ownerAuth(memberA) });
+  assert.equal(res.statusCode, 200, 'member can download an own-org client-visible file (file:read is a member permission)');
+  assert.equal(res.headers['content-length'], String(bytes.length), 'member path also gets the deterministic Content-Length');
+  assert.equal(Buffer.compare(res.rawPayload, bytes), 0, 'member: byte-identical body');
+  // Policy unchanged: a member still cannot download an internal (non-client-visible) file.
+  const internal = await mkFileRow({ state: 'AVAILABLE', clientVisible: false });
+  assert.equal((await app.inject({ method: 'GET', url: `/v1/portal/files/${internal.id}/download`, headers: ownerAuth(memberA) })).statusCode, 404);
+});
+
+test('download over a real socket is determinate-length (Content-Length set, NOT chunked) with exact bytes', async () => {
+  const bytes = pdf();
+  const f = await mkDownloadable(bytes, 'application/pdf', 'real.pdf');
+  await app.listen({ port: 0, host: '127.0.0.1' }); // only this test listens; after() closes it
+  const addr = app.server.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  const token = signSession({ sub: ownerA.id, org: ownerA.clientOrgId, tenant: tenantId, email: ownerA.email });
+  const r = await fetch(`http://127.0.0.1:${port}/v1/portal/files/${f.id}/download`, { headers: { authorization: `Bearer ${token}` } });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-length'), String(bytes.length));
+  assert.equal(r.headers.get('transfer-encoding'), null); // determinate length ⇒ NOT chunked — the whole point of the fix
+  const body = Buffer.from(await r.arrayBuffer());
+  assert.equal(Buffer.compare(body, bytes), 0);
 });
