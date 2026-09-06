@@ -17,8 +17,10 @@ export function ServicePageView({ page: p }: { page: ServicePage }) {
   // Carry the service context into the booking form (prefills serviceInterest).
   const navLabel = SERVICE_CATEGORIES.flatMap((c) => c.items).find((it) => it.href === path)?.label ?? p.h1;
   const bookHref = `/book?service=${encodeURIComponent(navLabel)}`;
-  // Same service context flows into the quote form (prefills serviceInterest).
-  const quoteHref = `/request-a-quote?service=${encodeURIComponent(navLabel)}`;
+  // Same service context flows into the quote form — but pass the STABLE canonical slug (e.g.
+  // ai-services/ai-automation), not the display name, so the URL is identifier-based. The quote form
+  // resolves it back to the label via the nav catalog, so renaming a service never breaks attribution.
+  const quoteHref = `/request-a-quote?service=${encodeURIComponent(p.slug)}`;
 
   const jsonLd = [
     serviceJsonLd({ name: p.h1, description: p.metaDescription, path }),

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Check, Loader2 } from 'lucide-react';
 import { analytics } from '@innovatix/analytics';
 import { captureFirstTouch, getAttribution } from '@/lib/attribution';
+import { SERVICE_CATEGORIES } from '@/lib/nav';
 
 type Variant = 'contact' | 'book' | 'quote';
 type State = 'idle' | 'submitting' | 'success' | 'error';
@@ -46,10 +47,16 @@ export function LeadForm({ variant, onSuccess }: { variant: Variant; onSuccess?:
   );
 
   const started = useRef(false);
-  // Prefill service interest when arriving from a service page (/book?service=…).
+  // Prefill service interest when arriving from a service page. Quote CTAs pass a STABLE canonical slug
+  // (e.g. ai-services/ai-automation); resolve it to the display label via the nav catalog — the same
+  // source of truth ServicePageView uses. A non-slug value (e.g. the legacy /book display-name param)
+  // passes through unchanged, so slug-based attribution/prefill survives display-name renames.
   const [presetService] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
-    return new URLSearchParams(window.location.search).get('service') || '';
+    const raw = new URLSearchParams(window.location.search).get('service') || '';
+    if (!raw) return '';
+    const match = SERVICE_CATEGORIES.flatMap((c) => c.items).find((it) => it.href === `/services/${raw}`);
+    return match?.label ?? raw;
   });
   const serviceOptions = presetService && !SERVICE_OPTIONS.includes(presetService) ? [presetService, ...SERVICE_OPTIONS] : SERVICE_OPTIONS;
   // Quote + book variants collect budget/timeline and require a project description; contact does not.
