@@ -37,6 +37,29 @@ function isUniqueViolation(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
 
+/** A GENUINE PostgreSQL deadlock (SQLSTATE 40P01) only — surfaced by Prisma as P2034 or as a raw
+ *  connector error whose message carries the code. Nothing else counts; we never broadly retry other
+ *  DB failures on the strength of this. */
+function isDeadlock(e: unknown): boolean {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034') return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return /\b40P01\b|deadlock detected/i.test(msg);
+}
+
+const MAX_INTAKE_TX_ATTEMPTS = 5; // 1 attempt + up to 4 deadlock retries
+const TX_BACKOFF_BASE_MS = 8;
+const TX_BACKOFF_JITTER_MS = 20;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// The intake transaction locks the lead row FOR UPDATE and so SERIALISES concurrent same-lead
+// submissions (a rare same-email burst). The interactive-transaction timeout COUNTS time spent waiting
+// on that row lock, so give it headroom above Prisma's 5s default — under load a serialised chain can
+// otherwise trip the timeout, which surfaces as a 500 (NOT a deadlock) and is deliberately NOT retried.
+// maxWait (pool-acquisition wait) is deliberately left at the Prisma default: the bottleneck here is
+// row-lock waiting INSIDE the transaction, not connection acquisition (pool ≫ realistic same-email
+// concurrency). Different-lead submissions never take this lock, so normal traffic pays nothing.
+const INTAKE_TX_TIMEOUT_MS = 20_000;
+
 /** Retry-safe lead resolution (cannot live inside the inquiry txn — see header). */
 async function resolveLead(
   prisma: PrismaClient,
@@ -124,9 +147,20 @@ export async function intakeLead(
   // Attribution is optional when the service is called outside the zod layer.
   const attr = input.attribution ?? {};
 
-  // 4. Transaction: inquiry + attribution + audit + activity + jobs (atomic).
-  try {
-    const result = await prisma.$transaction(async (tx) => {
+  // 4. Atomic intake write — inquiry + attribution + first/last-touch + audit + activity + jobs.
+  //    The lead row is locked FOR UPDATE as the FIRST statement so concurrent same-lead intakes
+  //    SERIALISE here rather than deadlocking: each LeadInquiry insert takes a KEY-SHARE lock on the
+  //    lead (its FK), and the touch UPDATE — which sets the @unique first/last-touch attribution
+  //    columns — needs FOR UPDATE; without the explicit up-front lock those two escalations cross and
+  //    Postgres raises 40P01. Wrapped in a bounded, jittered retry (below) so any residual/edge
+  //    deadlock re-runs the WHOLE transaction; each attempt is atomic, so a rolled-back attempt leaves
+  //    nothing behind — no duplicate inquiry/attribution/jobs (also independently guarded by the
+  //    inquiry's UNIQUE(tenantId, idempotencyKey) and each job's UNIQUE(tenantId, `${inquiry.id}:${type}`)).
+  const runIntakeTx = () =>
+    prisma.$transaction(async (tx) => {
+      // Row lock FIRST — must precede EVERY write below (inquiry, attribution, touch update, jobs).
+      await tx.$queryRaw`SELECT id FROM leads WHERE id = ${lead.id} FOR UPDATE`;
+
       const inquiry = await tx.leadInquiry.create({
         data: {
           tenantId,
@@ -230,33 +264,45 @@ export async function intakeLead(
       }
 
       return { inquiryId: inquiry.id };
-    });
+    }, { timeout: INTAKE_TX_TIMEOUT_MS }); // maxWait left at Prisma default (bottleneck is the row lock, not the pool)
 
-    return {
-      leadId: lead.id,
-      inquiryId: result.inquiryId,
-      isNewLead: isNew,
-      deduped: !isNew,
-      replayed: false,
-      spamResult: spam.result,
-    };
-  } catch (e) {
-    // Concurrent same-idempotencyKey → the loser refetches the winner's inquiry.
-    if (isUniqueViolation(e)) {
-      const winner = await prisma.leadInquiry.findUnique({
-        where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: input.idempotencyKey } },
-      });
-      if (winner) {
-        return {
-          leadId: winner.leadId,
-          inquiryId: winner.id,
-          isNewLead: false,
-          deduped: true,
-          replayed: true,
-          spamResult: winner.spamResult as IntakeResult['spamResult'],
-        };
+  // Run the atomic intake transaction; a GENUINE PostgreSQL deadlock (40P01 / P2034) retries the
+  // WHOLE transaction, bounded with short jittered backoff. No other DB failure is ever retried here.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const result = await runIntakeTx();
+      return {
+        leadId: lead.id,
+        inquiryId: result.inquiryId,
+        isNewLead: isNew,
+        deduped: !isNew,
+        replayed: false,
+        spamResult: spam.result,
+      };
+    } catch (e) {
+      // Concurrent same-idempotencyKey → the loser refetches the winner's inquiry (idempotent replay).
+      if (isUniqueViolation(e)) {
+        const winner = await prisma.leadInquiry.findUnique({
+          where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: input.idempotencyKey } },
+        });
+        if (winner) {
+          return {
+            leadId: winner.leadId,
+            inquiryId: winner.id,
+            isNewLead: false,
+            deduped: true,
+            replayed: true,
+            spamResult: winner.spamResult as IntakeResult['spamResult'],
+          };
+        }
+        throw e;
       }
+      // ONLY a genuine deadlock retries — arbitrary DB errors rethrow immediately.
+      if (isDeadlock(e) && attempt < MAX_INTAKE_TX_ATTEMPTS) {
+        await sleep(TX_BACKOFF_BASE_MS * attempt + Math.floor(Math.random() * TX_BACKOFF_JITTER_MS));
+        continue;
+      }
+      throw e;
     }
-    throw e;
   }
 }

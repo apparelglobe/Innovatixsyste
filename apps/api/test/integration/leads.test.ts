@@ -9,7 +9,7 @@ import '../_setup'; // MUST be first — points DATABASE_URL at the isolated tes
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { buildApp } from '../../src/main';
 import { prisma } from '../../src/db';
 import { config } from '../../src/config';
@@ -106,12 +106,94 @@ test('5. retried HTTP with same idempotency key → same reference (replay)', as
 
 test('6. two concurrent submissions (same email) → one lead, two inquiries', async () => {
   const email = `concurrent-${uid()}@example.com`;
-  await Promise.all([post(base({ businessEmail: email })), post(base({ businessEmail: email }))]);
+  // Assert BOTH succeed — before the FOR UPDATE fix, one submission lost a deadlock (40P01) and 500'd,
+  // leaving one inquiry. The status check makes that failure mode explicit, not just a count mismatch.
+  const [r1, r2] = await Promise.all([post(base({ businessEmail: email })), post(base({ businessEmail: email }))]);
+  assert.equal(r1.statusCode, 202);
+  assert.equal(r2.statusCode, 202);
   const leads = await prisma.lead.count({ where: { tenantId, normalizedEmail: email } });
   const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
   const inqs = await prisma.leadInquiry.count({ where: { leadId: lead.id } });
   assert.equal(leads, 1);
   assert.equal(inqs, 2);
+});
+
+test('6b. N concurrent submissions (same NEW email, repeated rounds) → 1 lead, N inquiries, N job/attr sets, all 202', async () => {
+  const N = 8; // exceeds the old 2-way race; the whole race runs from BEFORE the lead exists
+  const ROUNDS = 4; // run the race repeatedly, not once
+  for (let round = 0; round < ROUNDS; round++) {
+    const email = `race-${uid()}-r${round}@example.com`;
+    const responses = await Promise.all(Array.from({ length: N }, () => post(base({ businessEmail: email }))));
+    // A deadlock would surface here as a 500 on the losing submission.
+    for (const r of responses) assert.equal(r.statusCode, 202, `round ${round}: expected 202, got ${r.statusCode} → ${r.payload}`);
+    // Exactly one lead — the unique(tenantId, normalizedEmail) + P2002 refetch converges all N onto it
+    // BEFORE the FOR UPDATE section (resolveLead runs outside the txn), so the lock section is same-row.
+    const leads = await prisma.lead.count({ where: { tenantId, normalizedEmail: email } });
+    assert.equal(leads, 1, `round ${round}: exactly one lead`);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+    // No duplicate inquiries / attribution rows / job sets — retries are atomic (rolled back attempts
+    // leave nothing) and each is independently unique-guarded.
+    assert.equal(await prisma.leadInquiry.count({ where: { leadId: lead.id } }), N, `round ${round}: N inquiries`);
+    assert.equal(await prisma.leadAttribution.count({ where: { inquiry: { leadId: lead.id } } }), N, `round ${round}: N attributions`);
+    assert.equal(await prisma.sideEffectJob.count({ where: { leadId: lead.id } }), N * 4, `round ${round}: N×4 jobs`);
+    // Exactly one LEAD_CREATED across all N (only the isNew winner emits it), and one lead row overall.
+    assert.equal(
+      await prisma.leadActivity.count({ where: { leadId: lead.id, type: 'LEAD_CREATED' } }),
+      1,
+      `round ${round}: exactly one LEAD_CREATED activity`,
+    );
+  }
+});
+
+test('6c. N concurrent submissions (distinct emails) stay parallel + correct → N leads, one inquiry each, all 202', async () => {
+  const N = 8;
+  const emails = Array.from({ length: N }, () => `distinct-${uid()}@example.com`);
+  const responses = await Promise.all(emails.map((email) => post(base({ businessEmail: email }))));
+  for (const r of responses) assert.equal(r.statusCode, 202);
+  for (const email of emails) {
+    assert.equal(await prisma.lead.count({ where: { tenantId, normalizedEmail: email } }), 1);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+    assert.equal(await prisma.leadInquiry.count({ where: { leadId: lead.id } }), 1);
+  }
+});
+
+test('6d. injected deadlock (P2034) on the first attempt → bounded retry re-runs the WHOLE txn; exactly one inquiry/attribution/job set + one per idempotency key (no duplication)', async () => {
+  // Real deadlocks can no longer occur (FOR UPDATE serialises same-lead intakes), so the retry branch is
+  // otherwise unexercised. Inject a synthetic P2034 on the FIRST $transaction and delegate everything else
+  // to the real client: this proves the retry (a) fires ONLY on a genuine deadlock and (b) writes exactly
+  // ONE set — the failed attempt committed nothing (atomicity), and the unique keys would reject any dup.
+  const email = `retry-${uid()}@example.com`;
+  const payload = base({ businessEmail: email });
+  let txCalls = 0;
+  const flaky = new Proxy(prisma, {
+    get(target, prop, recv) {
+      if (prop === '$transaction') {
+        return (...args: unknown[]) => {
+          txCalls += 1;
+          if (txCalls === 1) {
+            return Promise.reject(
+              new Prisma.PrismaClientKnownRequestError('deadlock detected', { code: 'P2034', clientVersion: 'test' }),
+            );
+          }
+          return (target.$transaction as (...a: unknown[]) => unknown)(...args);
+        };
+      }
+      return Reflect.get(target, prop, recv);
+    },
+  }) as unknown as typeof prisma;
+
+  const result = await intakeLead(flaky, { id: tenantId } as any, payload as any, { correlationId: `c-${uid()}` });
+  assert.ok(txCalls >= 2, `retry must have re-run the whole transaction (txCalls=${txCalls})`);
+  assert.equal(result.replayed, false);
+  const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, normalizedEmail: email } });
+  assert.equal(await prisma.leadInquiry.count({ where: { leadId: lead.id } }), 1, 'one inquiry, no dup');
+  assert.equal(await prisma.leadAttribution.count({ where: { inquiry: { leadId: lead.id } } }), 1, 'one attribution, no dup');
+  assert.equal(await prisma.sideEffectJob.count({ where: { leadId: lead.id } }), 4, 'one job set, no dup');
+  assert.equal(
+    await prisma.leadInquiry.count({ where: { tenantId, idempotencyKey: (payload as { idempotencyKey: string }).idempotencyKey } }),
+    1,
+    'one inquiry per idempotency key',
+  );
 });
 
 test('7. invalid email → 400 (generic)', async () => {
