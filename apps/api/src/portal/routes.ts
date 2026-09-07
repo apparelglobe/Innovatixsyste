@@ -5,6 +5,7 @@
  * error (never reveals whether the email exists).
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { ClientUserRole } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { resolveDefaultTenant } from '../tenant';
@@ -31,7 +32,7 @@ import { findClientOrgInvoice, findClientVisibleFile } from '../lib/scoped';
 import { sendFileDownload } from '../lib/download';
 import { randomUUID } from 'node:crypto';
 
-type Ctx = { session: NonNullable<ReturnType<typeof verifySession>> };
+type Ctx = { session: NonNullable<ReturnType<typeof verifySession>>; role: ClientUserRole };
 
 async function requireSession(req: FastifyRequest, reply: FastifyReply): Promise<Ctx | null> {
   const cookie = (req as unknown as { cookies?: Record<string, string> }).cookies?.[PORTAL_COOKIE];
@@ -47,7 +48,17 @@ async function requireSession(req: FastifyRequest, reply: FastifyReply): Promise
     reply.code(401).send({ ok: false, message: 'Not authenticated' });
     return null;
   }
-  return { session };
+  // Current DB-backed membership check — this gate OWNS the invariant centrally. resolveClientRole
+  // returns null for a MISSING or INACTIVE client user, so a deactivated/removed member gets no access
+  // even with a still-valid JWT (the token carries no role; role is always the fresh DB value).
+  // Downstream portal routes may therefore assume ctx.role is a current, active role, and can pass it
+  // into requireClientPermission to avoid a second identical lookup.
+  const role = await resolveClientRole(session);
+  if (!role) {
+    reply.code(401).send({ ok: false, message: 'Not authenticated' });
+    return null;
+  }
+  return { session, role };
 }
 
 const loginSchema = z.object({
@@ -263,7 +274,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/messages', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'message:send'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'message:send', ctx.role))) return;
     const body = z.object({ body: z.string().trim().min(1).max(4000) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ ok: false });
 
@@ -289,7 +300,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.get('/portal/invoices/:id', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'invoice:read'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:read', ctx.role))) return;
     const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id, { lineItems: { orderBy: { createdAt: 'asc' } } });
     if (!inv) return reply.code(404).send({ ok: false });
     return reply.send({ ok: true, invoice: { ...(await enrichInvoice(inv)), overdue: isInvoiceOverdue(inv) } });
@@ -300,7 +311,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.get('/portal/invoices/:id/pdf', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'invoice:read'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:read', ctx.role))) return;
     // Same org scope as findClientOrgInvoice (project- OR org-scoped), but a concrete include so
     // lineItems keep their precise type for the PDF renderer. DRAFT is never rendered.
     const inv = await prisma.invoice.findFirst({
@@ -327,7 +338,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (config.NODE_ENV === 'production' || config.PAYMENTS_PROVIDER !== 'stub') {
       return reply.code(404).send({ ok: false });
     }
-    if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay', ctx.role))) return;
     // Scope: the invoice must belong to the caller's org (project- or org-scoped) and not be a draft.
     const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id);
     if (!inv || inv.status === 'DRAFT') return reply.code(404).send({ ok: false });
@@ -343,7 +354,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/invoices/:id/checkout', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:pay', ctx.role))) return;
 
     // Confirm the invoice belongs to the authenticated org (project- or org-scoped, e.g. RETAINER).
     const inv = await findClientOrgInvoice(prisma, ctx.session.tenant, ctx.session.org, (req.params as { id: string }).id);
@@ -418,7 +429,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/approvals/:id/decide', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'approval:decide'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'approval:decide', ctx.role))) return;
     const id = (req.params as { id: string }).id;
     const body = z.object({ decision: z.enum(['APPROVED', 'CHANGES_REQUESTED']), note: z.string().max(2000).optional() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ ok: false });
@@ -487,7 +498,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.get('/portal/client-users', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'client-user:read'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:read', ctx.role))) return;
     const users = await prisma.clientUser.findMany({
       where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
       orderBy: { createdAt: 'asc' },
@@ -500,7 +511,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/client-users', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'client-user:invite'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:invite', ctx.role))) return;
     const b = z.object({
       email: z.string().trim().email().max(200),
       firstName: z.string().trim().max(100).optional(),
@@ -530,7 +541,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.patch('/portal/client-users/:id', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'client-user:role-change'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:role-change', ctx.role))) return;
     const id = (req.params as { id: string }).id;
     const b = z.object({ role: z.enum(['OWNER', 'MEMBER']) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });
@@ -550,7 +561,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/client-users/:id/deactivate', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'client-user:deactivate'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:deactivate', ctx.role))) return;
     const id = (req.params as { id: string }).id;
     if (id === ctx.session.sub) return reply.code(400).send({ ok: false, message: 'You cannot deactivate your own account.' });
     const target = await prisma.clientUser.findFirst({ where: { id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { id: true, role: true, active: true } });
@@ -568,7 +579,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.post('/portal/client-users/:id/reactivate', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'client-user:deactivate'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'client-user:deactivate', ctx.role))) return;
     const id = (req.params as { id: string }).id;
     const target = await prisma.clientUser.findFirst({ where: { id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org }, select: { id: true } });
     if (!target) return reply.code(404).send({ ok: false });
@@ -582,7 +593,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.patch('/portal/invoices/:id/billing-contact', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
-    if (!(await requireClientPermission(reply, ctx.session, 'billing:manage'))) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'billing:manage', ctx.role))) return;
     const id = (req.params as { id: string }).id;
     const b = z.object({ billingContactUserId: z.string().min(1).nullable() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ ok: false });

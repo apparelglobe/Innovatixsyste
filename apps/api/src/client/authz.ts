@@ -30,15 +30,22 @@ export async function resolveClientRole(session: ClientSessionLike): Promise<Cli
 
 /**
  * Enforce a client permission. Returns true when allowed. On denial it SENDS
- * the reply (401 if the account no longer exists, else 403) and returns false —
- * callers must `if (!(await requireClientPermission(...))) return;`.
+ * the reply (401 if the account no longer exists / is inactive, else 403) and
+ * returns false — callers must `if (!(await requireClientPermission(...))) return;`.
+ *
+ * `preResolvedRole` (optional) lets a caller that already resolved the caller's
+ * CURRENT role (e.g. requireSession) reuse it and avoid a second DB lookup:
+ *   • supplied (including null) → trusted as-is; a null denies with 401 (never a bypass)
+ *   • omitted → resolved fresh from the DB (backward-compatible default)
  */
 export async function requireClientPermission(
   reply: FastifyReply,
   session: ClientSessionLike,
   action: ClientAction,
+  preResolvedRole?: ClientUserRole | null,
 ): Promise<boolean> {
-  const role = await resolveClientRole(session);
+  // Supplied role (incl. null) is trusted as-is; omitted → resolve fresh from the DB.
+  const role = preResolvedRole !== undefined ? preResolvedRole : await resolveClientRole(session);
   if (!role) {
     reply.code(401).send({ ok: false, message: 'Not authenticated' });
     return false;
