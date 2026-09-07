@@ -1,142 +1,79 @@
 'use client';
 
+/**
+ * Relationship Home (Slice 1). A card PER project (the aggregate) + one money-free Care Plan band.
+ * Uses the additive /portal/relationship-overview + useRelationship (me + lean projects list) — NOT the
+ * legacy /portal/project. Care Plan is a single relationship band, not per-card, so each card's next
+ * action is derived from project-level signals only. Approvals are decided on /projects/:id; the
+ * relationship activity feed returns in Slice 2 (deliberately no per-project timeline here).
+ */
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Loader2, Clock, ArrowRight } from 'lucide-react';
+import { Loader2, Clock, ArrowRight, ArrowUpRight } from 'lucide-react';
 import { PortalShell } from '@/components/PortalShell';
-import { api, apiJson } from '@/lib/portal-api';
-import { fmtDate } from '@/lib/fmt';
+import { apiJson } from '@/lib/portal-api';
 import { Timestamp } from '@/components/Timestamp';
+import { useRelationship } from '@/lib/useRelationship';
 import { deriveWorkspaceState, type ProjectStatus } from '@/lib/workspace-stage';
 import { TONE_CLASS } from '@/lib/proposal-stage';
-import { MOMENT_META, MOMENT_FALLBACK } from '@/lib/relationship-moment';
 
-type Overview = {
-  project: null | {
-    id: string; name: string; status: string; percentComplete: number; dueDate: string | null;
-    nextUpdateAt?: string | null; nextUpdateNote?: string | null;
-    milestonesDone: number; milestonesTotal: number; openApprovals: number;
-    pendingApproval?: { id: string; subject: string; type?: string | null };
-    payableInvoice?: { id: string; number: string; amountCents: number; overdue?: boolean } | null;
-    carePlan?: { active: boolean; nextReportAt?: string | null } | null;
-    nextMilestone?: { name: string; dueDate: string | null };
-    milestones: { id: string; name: string; status: string; dueDate: string | null }[];
-    latestReport?: { title: string; kind: string; summary: string; publishedAt: string };
-    activities: { type: string; message: string; createdAt: string }[];
-    team: { name: string; role: string }[];
-  };
+type Card = {
+  id: string; name: string; status: string; percentComplete: number; dueDate: string | null;
+  nextUpdateAt?: string | null; nextUpdateNote?: string | null;
+  milestonesDone: number; milestonesTotal: number;
+  nextMilestone?: { name: string; dueDate: string | null } | null;
+  openApprovals: number;
+  pendingApproval?: { id: string; subject: string; type?: string | null } | null;
+  payableInvoice: { id: string; number: string; amountCents: number; overdue?: boolean } | null;
 };
+type CarePlan = { active: boolean; nextReportAt?: string | null } | null;
 
-export default function OverviewPage() {
-  const router = useRouter();
-  const [me, setMe] = useState<{ user: { firstName?: string; lastName?: string; role?: string }; org: { name: string } } | null>(null);
-  const [data, setData] = useState<Overview | null>(null);
+export default function HomePage() {
+  const { me, projects, userName, canBilling, isOwner, loading } = useRelationship();
+  const [cards, setCards] = useState<Card[] | undefined>(undefined);
+  const [carePlan, setCarePlan] = useState<CarePlan>(null);
 
   const load = useCallback(async () => {
-    const meRes = await apiJson<{ ok: boolean; user?: { firstName?: string; lastName?: string; role?: string }; org?: { name: string } }>('/portal/me');
-    if (meRes.status === 401) { router.replace('/clientportal'); return; }
-    // Only commit on a real success. A non-200 refetch (e.g. right after a decide) must never
-    // null me/data — that flips the page back to the loading state and remounts the whole
-    // subtree mid-interaction, which drops the click and wipes child state.
-    if (meRes.status === 200) setMe({ user: meRes.body.user || {}, org: meRes.body.org || { name: '' } });
-    const ov = await apiJson<Overview>('/portal/overview');
-    if (ov.status === 200) setData(ov.body);
-  }, [router]);
-
+    const rel = await apiJson<{ projects: Card[]; carePlan: CarePlan }>('/portal/relationship-overview');
+    if (rel.status === 200) { setCards(rel.body.projects); setCarePlan(rel.body.carePlan ?? null); }
+  }, []);
   useEffect(() => { load(); }, [load]);
 
-  // Only account OWNERs may decide approvals / pay (the backend enforces this too).
-  const isOwner = me?.user.role === 'OWNER';
-
-  // The shell mounts on the FIRST render and STAYS mounted — the loading spinner lives inside
-  // <main>, never in place of the whole tree. (Returning a bare full-screen spinner before data
-  // tore the shell + interactive subtree down and rebuilt it after the fetch; a click landing in
-  // that remount window was dropped and child state was reset.)
   const firstName = me?.user.firstName || '';
-  const userName = me ? ([me.user.firstName, me.user.lastName].filter(Boolean).join(' ') || 'Client') : '';
-  const p = data?.project ?? null;
-  const state = p ? deriveWorkspaceState({
-    projectStatus: p.status as ProjectStatus,
-    pendingApproval: p.pendingApproval ? { id: p.pendingApproval.id, subject: p.pendingApproval.subject, type: p.pendingApproval.type } : null,
-    payableInvoice: p.payableInvoice ?? null,
-    carePlan: p.carePlan ?? null,
-    nextUpdateAt: p.nextUpdateAt,
-    nextUpdateNote: p.nextUpdateNote,
-  }) : null;
+  const ready = !!me && !loading && cards !== undefined;
 
   return (
-    <PortalShell orgName={me?.org.name ?? ''} userName={userName} active="overview" billingAllowed={isOwner}>
+    <PortalShell orgName={me?.org.name ?? ''} userName={userName} active="overview" billingAllowed={canBilling} projects={projects}>
       <div className="mx-auto max-w-4xl">
-        {!me || !data ? (
+        {!ready ? (
           <div className="grid place-items-center py-24 text-neutral-400"><Loader2 className="animate-spin" /></div>
         ) : (
           <>
-        <p className="text-sm text-neutral-500">Welcome back{firstName ? `, ${firstName}` : ''}</p>
+            <p className="text-sm text-neutral-500">Welcome back{firstName ? `, ${firstName}` : ''}</p>
 
-        {!p || !state ? (
-          <div className="mt-4 rounded-2xl border border-line bg-surface p-6 text-neutral-400">
-            No active project yet. Your delivery team will set this up shortly.
-          </div>
-        ) : (
-          <div className="mt-3 space-y-6">
-            {/* ── The one status card: what's happening + the one next action ── */}
-            <section className={`rounded-2xl border p-6 ${state.turn === 'YOU' ? 'border-primary/40 bg-primary/[0.06]' : 'border-line bg-surface'}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${TONE_CLASS[state.tone]}`}>{state.statusLabel}</span>
-                <span className="text-sm font-medium text-neutral-400">{p.name}</span>
+            {carePlan?.active && (
+              <section className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-400/25 bg-emerald-400/[0.06] p-4">
+                <div>
+                  <div className="text-sm font-bold text-white">Care Plan active — we&rsquo;ve got you covered</div>
+                  <div className="text-xs text-neutral-400">We&rsquo;re monitoring and supporting your account.</div>
+                </div>
+                {carePlan.nextReportAt && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-neutral-200">
+                    <Clock size={13} className="text-emerald-300" /> Next report <Timestamp value={carePlan.nextReportAt} className="font-semibold text-white" />
+                  </span>
+                )}
+              </section>
+            )}
+
+            <h1 className="mt-6 text-lg font-extrabold tracking-tight text-white">Your projects</h1>
+            {(cards ?? []).length === 0 ? (
+              <div className="mt-3 rounded-2xl border border-line bg-surface p-6 text-neutral-400">
+                No active projects yet. Your delivery team will set this up shortly.
               </div>
-
-              <h1 className="mt-3 text-xl font-extrabold tracking-tight text-white">{state.title}</h1>
-              <p className="mt-1.5 text-sm leading-relaxed text-neutral-300">{state.body}</p>
-
-              {/* Our turn — the next-update promise (renders nothing when no date is set) */}
-              {state.nextUpdate && (
-                <p className="mt-3 inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-neutral-200">
-                  <Clock size={15} className="text-primary-light" />
-                  {state.nextUpdate.label ?? 'Next update by'} <Timestamp value={state.nextUpdate.at} withZone className="font-semibold text-white" />
-                  {state.nextUpdate.note && <span className="text-neutral-400">· {state.nextUpdate.note}</span>}
-                </p>
-              )}
-
-              {/* Your turn — the one next action */}
-              {state.action && (
-                <div className="mt-4">
-                  {state.action.ownerOnly && !isOwner ? (
-                    <p className="text-sm text-amber-400/90">
-                      Only an account owner can {state.action.kind === 'invoice' ? 'pay this' : 'approve this'}. Ask an owner on your team to take a look.
-                    </p>
-                  ) : state.action.kind === 'approval' ? (
-                    <ApprovalPanel targetId={state.action.targetId} label={state.action.label} onDecided={load} />
-                  ) : state.action.href ? (
-                    <a href={state.action.href}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
-                      {state.action.label} <ArrowRight size={15} />
-                    </a>
-                  ) : null}
-                </div>
-              )}
-
-              {/* Delivery progress — the % is the headline metric; milestones are plain context.
-                  Hidden once the project is complete: no "next milestone" to chase, and a
-                  staff-set % below 100 shouldn't contradict a "Project complete" card. */}
-              {state.turn !== 'DONE' && (
-                <div className="mt-5 border-t border-line pt-4">
-                  <div className="flex items-end justify-between gap-3">
-                    <span className="text-xs text-neutral-500">{p.milestonesDone} of {p.milestonesTotal} milestones done{p.nextMilestone ? ` · next: ${p.nextMilestone.name}` : ''}</span>
-                    <span className="text-lg font-bold leading-none text-white">{p.percentComplete}%</span>
-                  </div>
-                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                    <div className="h-full rounded-full bg-brand-gradient" style={{ width: `${p.percentComplete}%` }} />
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {/* Relationship timeline stays on Home (Canon §6); project detail (milestones, reports,
-                delivery team) now lives under Projects. */}
-            <RelationshipTimeline moments={p.activities} />
-          </div>
-        )}
+            ) : (
+              <div className="mt-3 space-y-4">
+                {(cards ?? []).map((c) => <ProjectCard key={c.id} card={c} isOwner={isOwner} />)}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -144,82 +81,52 @@ export default function OverviewPage() {
   );
 }
 
-/**
- * The one-next-action approval control, isolated into its own component so typing a note only
- * re-renders THIS panel — not the whole Home page. (The prior inline version kept the note in
- * page state, so every keystroke re-rendered the entire status card, and the first click after
- * typing could be lost to that churn.) The note is only cleared on a confirmed success.
- */
-function ApprovalPanel({ targetId, label, onDecided }: { targetId: string; label: string; onDecided: () => void | Promise<void> }) {
-  const [note, setNote] = useState('');
-  const [deciding, setDeciding] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function decide(decision: 'APPROVED' | 'CHANGES_REQUESTED') {
-    setErr(null);
-    setDeciding(true);
-    const r = await api(`/portal/approvals/${targetId}/decide`, { method: 'POST', body: JSON.stringify({ decision, note: note.trim() || undefined }) });
-    setDeciding(false);
-    if (!r.ok) { setErr(r.status === 403 ? 'Only an account owner can approve or request changes.' : 'Could not submit your decision. Please try again.'); return; }
-    setNote('');
-    await onDecided();
-  }
-
+function ProjectCard({ card: c, isOwner }: { card: Card; isOwner: boolean }) {
+  const state = deriveWorkspaceState({
+    projectStatus: c.status as ProjectStatus,
+    pendingApproval: c.pendingApproval ?? null,
+    payableInvoice: c.payableInvoice ?? null,
+    carePlan: null, // relationship band, not per-card
+    nextUpdateAt: c.nextUpdateAt,
+    nextUpdateNote: c.nextUpdateNote,
+  });
   return (
-    <>
-      <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000}
-        placeholder="Add a note (optional) — shared with the delivery team"
-        className="w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
-      <div className="mt-3 flex justify-end gap-2">
-        <button type="button" disabled={deciding} onClick={() => decide('CHANGES_REQUESTED')}
-          className="rounded-lg border border-line-strong px-3.5 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05] disabled:opacity-60">Request changes</button>
-        <button type="button" disabled={deciding} onClick={() => decide('APPROVED')}
-          className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">{label}</button>
+    <section className={`rounded-2xl border p-5 ${state.turn === 'YOU' ? 'border-primary/40 bg-primary/[0.06]' : 'border-line bg-surface'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${TONE_CLASS[state.tone]}`}>{state.statusLabel}</span>
+        <a href={`/projects/${c.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-neutral-300 transition hover:text-white">{c.name} <ArrowUpRight size={14} /></a>
       </div>
-      {err && <p className="mt-2 text-right text-xs text-red-400">{err}</p>}
-    </>
-  );
-}
+      <h2 className="mt-2.5 text-base font-bold text-white">{state.title}</h2>
+      <p className="mt-1 text-sm leading-relaxed text-neutral-300">{state.body}</p>
 
-/**
- * S4 — the curated relationship timeline (Canon §6 allow-list). Shows the latest few meaningful
- * moments by default (newest-first); "View full timeline" expands in place to the whole story,
- * oldest → newest. The API already filters to curated moment types, so anything here is meaningful.
- */
-function RelationshipTimeline({ moments }: { moments: { type: string; message: string; createdAt: string }[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const DEFAULT_N = 4;
-  const shown = expanded ? [...moments].reverse() : moments.slice(0, DEFAULT_N);
-
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
-      <h3 className="text-sm font-bold text-white">Relationship timeline</h3>
-      {moments.length === 0 ? (
-        <p className="mt-4 text-sm text-neutral-500">The milestones of your relationship with Innovatix will appear here as they happen.</p>
-      ) : (
-        <>
-          <ul className="mt-4 space-y-3.5">
-            {shown.map((m, i) => {
-              const meta = MOMENT_META[m.type] ?? MOMENT_FALLBACK;
-              const Icon = meta.icon;
-              return (
-                <li key={`${m.type}-${m.createdAt}-${i}`} className="flex items-start gap-3 text-sm">
-                  <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${TONE_CLASS[meta.tone]}`}><Icon size={13} /></span>
-                  <div>
-                    <div className="text-neutral-200">{m.message}</div>
-                    <div className="text-xs text-neutral-600">{fmtDate(m.createdAt)}</div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {moments.length > DEFAULT_N && (
-            <button type="button" onClick={() => setExpanded((v) => !v)} className="mt-4 text-xs font-semibold text-primary-light hover:underline">
-              {expanded ? 'Show recent only' : `View full timeline (${moments.length})`}
-            </button>
-          )}
-        </>
+      {state.nextUpdate && (
+        <p className="mt-2.5 inline-flex flex-wrap items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-200">
+          <Clock size={13} className="text-primary-light" /> {state.nextUpdate.label ?? 'Next update by'} <Timestamp value={state.nextUpdate.at} withZone className="font-semibold text-white" />
+        </p>
       )}
-    </div>
+
+      {state.action && (
+        <div className="mt-3">
+          {state.action.ownerOnly && !isOwner ? (
+            <p className="text-xs text-amber-400/90">Only an account owner can {state.action.kind === 'invoice' ? 'pay this' : 'approve this'}.</p>
+          ) : (
+            <a href={state.action.kind === 'invoice' && state.action.href ? state.action.href : `/projects/${c.id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-cta transition-colors hover:bg-primary-dark">
+              {state.action.label} <ArrowRight size={14} />
+            </a>
+          )}
+        </div>
+      )}
+
+      {state.turn !== 'DONE' && c.milestonesTotal > 0 && (
+        <div className="mt-4 border-t border-line pt-3">
+          <div className="flex items-end justify-between gap-3">
+            <span className="text-xs text-neutral-500">{c.milestonesDone} of {c.milestonesTotal} milestones{c.nextMilestone ? ` · next: ${c.nextMilestone.name}` : ''}</span>
+            <span className="text-sm font-bold leading-none text-white">{c.percentComplete}%</span>
+          </div>
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-brand-gradient" style={{ width: `${c.percentComplete}%` }} /></div>
+        </div>
+      )}
+    </section>
   );
 }

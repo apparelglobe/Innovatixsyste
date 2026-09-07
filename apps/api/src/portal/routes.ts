@@ -61,6 +61,14 @@ async function requireSession(req: FastifyRequest, reply: FastifyReply): Promise
   return { session, role };
 }
 
+// Relationship project ordering (Slice 1): active/in-flight → planning/discovery → complete, then the
+// caller's pre-applied updatedAt-desc / id-desc order (JS Array.sort is stable, so the within-group order
+// is preserved). Deterministic for both the API tests and the UI — never relies on DB insertion order.
+const PROJECT_GROUP_RANK: Record<string, number> = { IN_PROGRESS: 0, UAT: 0, LAUNCHED: 0, ON_HOLD: 0, DISCOVERY: 1, COMPLETE: 2 };
+function orderProjectsForRelationship<T extends { status: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => (PROJECT_GROUP_RANK[a.status] ?? 0) - (PROJECT_GROUP_RANK[b.status] ?? 0));
+}
+
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(320),
   password: z.string().min(1).max(200),
@@ -120,6 +128,9 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       ok: true,
       user: { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
       org: { name: user.clientOrg.name },
+      // Additive (Slice 1): server-authoritative Billing gate so the new relationship shell can gate the
+      // Billing nav WITHOUT loading the legacy /portal/project block. Same clientCan check as elsewhere.
+      canBilling: clientCan(ctx.role, 'invoice:read'),
     });
   });
 
@@ -196,6 +207,97 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         team: project.members.map((m) => ({ name: m.name, role: m.role })),
       },
     });
+  });
+
+  // ── Relationship Home aggregate (Slice 1) — ADDITIVE; /portal/overview is left unchanged. ──
+  // Returns a COMPACT card per project (no activities/team/reports/files/full milestones) + the ONE
+  // money-free Care Plan band + a server-authoritative canBilling. Every cross-project lookup is a single
+  // batched `WHERE projectId IN (...)` query, so total query count is CONSTANT in the number of projects
+  // (no N+1). payableInvoice is OWNER-only AND project-linked only — org/RETAINER/projectId=null invoices
+  // are relationship-level and never placed on a card; a MEMBER gets payableInvoice: null on every card.
+  app.get('/portal/relationship-overview', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const { org, tenant } = ctx.session;
+    const canBilling = clientCan(ctx.role, 'invoice:read');
+
+    // 1) projects + a COMPACT milestone select (status/name/dueDate only) — one findMany + one batched
+    //    milestones query; gives milestone counts + nextMilestone without fetching full detail.
+    const projects = await prisma.project.findMany({
+      where: { tenantId: tenant, clientOrgId: org },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true, name: true, status: true, percentComplete: true, dueDate: true,
+        nextUpdateAt: true, nextUpdateNote: true,
+        milestones: { orderBy: { sequence: 'asc' }, select: { status: true, name: true, dueDate: true } },
+      },
+    });
+    const ids = projects.map((p) => p.id);
+
+    // 2) ALL pending approvals for ALL projects in ONE query → grouped in JS (count + first-per-project).
+    const pendingApprovals = ids.length
+      ? await prisma.approval.findMany({
+          where: { tenantId: tenant, projectId: { in: ids }, status: 'PENDING' },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, subject: true, type: true, projectId: true },
+        })
+      : [];
+    const approvalByProject = new Map<string, { count: number; first: { id: string; subject: string; type: string | null } }>();
+    for (const a of pendingApprovals) {
+      const cur = approvalByProject.get(a.projectId);
+      if (cur) cur.count += 1;
+      else approvalByProject.set(a.projectId, { count: 1, first: { id: a.id, subject: a.subject, type: a.type } });
+    }
+
+    // 3) OWNER-only: oldest project-LINKED payable invoice per project in ONE query (skipped for members).
+    const payableByProject = new Map<string, { id: string; number: string; amountCents: number; overdue: boolean }>();
+    if (canBilling && ids.length) {
+      const invoices = await prisma.invoice.findMany({
+        where: { tenantId: tenant, projectId: { in: ids }, status: { in: ['SENT', 'OVERDUE'] } },
+        orderBy: { dueAt: 'asc' },
+        select: { id: true, number: true, amountCents: true, dueAt: true, status: true, projectId: true },
+      });
+      for (const inv of invoices) {
+        if (inv.projectId && !payableByProject.has(inv.projectId)) {
+          payableByProject.set(inv.projectId, { id: inv.id, number: inv.number, amountCents: inv.amountCents, overdue: isInvoiceOverdue(inv) });
+        }
+      }
+    }
+
+    // 4) relationship-level Care Plan (money-free, all roles) — ONE call, not per project.
+    const carePlan = await selectClientCarePlanStatus(prisma, tenant, org);
+
+    const cards = orderProjectsForRelationship(projects).map((p) => {
+      const milestonesDone = p.milestones.filter((m) => m.status === 'DONE').length;
+      const next = p.milestones.find((m) => m.status !== 'DONE') ?? null;
+      const appr = approvalByProject.get(p.id);
+      return {
+        id: p.id, name: p.name, status: p.status, percentComplete: p.percentComplete, dueDate: p.dueDate,
+        nextUpdateAt: p.nextUpdateAt, nextUpdateNote: p.nextUpdateNote,
+        milestonesDone, milestonesTotal: p.milestones.length,
+        nextMilestone: next && { name: next.name, dueDate: next.dueDate },
+        openApprovals: appr?.count ?? 0,
+        pendingApproval: appr?.first ?? null,
+        // STABLE shape: always present. OWNER + project-linked → the invoice; otherwise null (a MEMBER is
+        // always null — the invoice query above never ran for them, so zero financial data reaches a member).
+        payableInvoice: payableByProject.get(p.id) ?? null,
+      };
+    });
+
+    return reply.send({ ok: true, canBilling, carePlan, projects: cards });
+  });
+
+  // ── Lean project list (Slice 1) — drives the URL-navigation switcher on project pages. NO financial
+  //    data (id/name/status only), same deterministic ordering as the relationship aggregate. ──
+  app.get('/portal/projects', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const projects = await prisma.project.findMany({
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, name: true, status: true },
+    });
+    return reply.send({ ok: true, projects: orderProjectsForRelationship(projects) });
   });
 
   // ── Project detail (scoped) ──

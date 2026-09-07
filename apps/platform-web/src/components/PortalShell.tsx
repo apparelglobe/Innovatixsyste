@@ -20,10 +20,15 @@ const NAV = [
 ];
 
 export function PortalShell({
-  orgName, userName, active, children, billingAllowed = false,
-}: { orgName: string; userName: string; active: string; children: React.ReactNode; billingAllowed?: boolean }) {
+  orgName, userName, active, children, billingAllowed = false, projects = [], currentProjectId,
+}: { orgName: string; userName: string; active: string; children: React.ReactNode; billingAllowed?: boolean; projects?: { id: string; name: string; status: string }[]; currentProjectId?: string }) {
   const router = useRouter();
   const initials = userName.split(' ').map((s) => s[0]).slice(0, 2).join('').toUpperCase() || 'U';
+  // Slice 1: the project switcher is NAVIGATION ONLY (selecting → /projects/:id), never persistent
+  // "current project" state. It is shown only on the relationship Home + project surfaces and hidden on
+  // /messages, /billing (invoices), and /settings — where a selected project would mislead (Messages still
+  // posts to the legacy project). `currentProjectId` comes from the /projects/:id URL, nothing else.
+  const showSwitcher = (active === 'overview' || active === 'projects') && projects.length > 0;
   // Billing is OWNER-only (P3.3). Hiding the nav item is cosmetic only — every billing route is
   // enforced server-side — but it keeps a member from clicking into a screen they can't use.
   const nav = NAV.filter((n) => n.key !== 'invoices' || billingAllowed);
@@ -59,7 +64,9 @@ export function PortalShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 items-center justify-between border-b border-line bg-base/80 px-6 backdrop-blur">
-          <div className="text-sm font-semibold text-neutral-300">{orgName}</div>
+          {showSwitcher
+            ? <ProjectSwitcher projects={projects} currentProjectId={currentProjectId} orgName={orgName} />
+            : <div className="text-sm font-semibold text-neutral-300">{orgName}</div>}
           <div className="flex items-center gap-3">
             <NotificationBell base="/portal" />
             <div ref={menuRef} className="relative">
@@ -103,6 +110,49 @@ export function PortalShell({
           </a>
         ))}
       </nav>
+    </div>
+  );
+}
+
+/** URL-navigation project switcher (Slice 1). Selecting a project navigates to /projects/:id; the
+ *  "Relationship home" entry returns to /. Never sets persistent app state — the highlighted project is
+ *  whatever `currentProjectId` (from the /projects/:id URL) says, or none on Home. */
+function ProjectSwitcher({ projects, currentProjectId, orgName }: { projects: { id: string; name: string; status: string }[]; currentProjectId?: string; orgName: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, []);
+  const current = projects.find((p) => p.id === currentProjectId);
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-semibold text-neutral-300 transition hover:bg-white/[0.06]"
+        aria-haspopup="menu" aria-expanded={open} aria-label="Switch project">
+        <FolderKanban size={15} className="text-neutral-500" />
+        <span className="max-w-[13rem] truncate">{current ? current.name : orgName}</span>
+        <ChevronDown size={13} className="text-neutral-500" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute left-0 z-50 mt-2 w-64 overflow-hidden rounded-xl border border-line bg-elevated shadow-pop">
+          <button role="menuitem" onClick={() => { setOpen(false); router.push('/'); }}
+            className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition ${!currentProjectId ? 'font-semibold text-primary-light' : 'text-neutral-300 hover:bg-white/[0.04]'}`}>
+            <Home size={15} /> Relationship home
+          </button>
+          <div className="max-h-72 overflow-y-auto border-t border-line/60 py-1">
+            {projects.map((p) => (
+              <button key={p.id} role="menuitem" onClick={() => { setOpen(false); router.push(`/projects/${p.id}`); }}
+                className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition ${p.id === currentProjectId ? 'font-semibold text-primary-light' : 'text-neutral-300 hover:bg-white/[0.04]'}`}>
+                <span className="truncate">{p.name}</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-neutral-500">{p.status.replace(/_/g, ' ')}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
