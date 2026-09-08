@@ -5,16 +5,18 @@
  * Uses the additive /portal/relationship-overview + useRelationship (me + lean projects list) — NOT the
  * legacy /portal/project. Care Plan is a single relationship band, not per-card, so each card's next
  * action is derived from project-level signals only. Approvals are decided on /projects/:id; the
- * relationship activity feed returns in Slice 2 (deliberately no per-project timeline here).
+ * relationship activity feed (Slice 2) is the org-wide curated timeline below the project cards.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Clock, ArrowRight, ArrowUpRight } from 'lucide-react';
 import { PortalShell } from '@/components/PortalShell';
 import { apiJson } from '@/lib/portal-api';
 import { Timestamp } from '@/components/Timestamp';
+import { ActivityTimeline } from '@/components/ActivityTimeline';
 import { useRelationship } from '@/lib/useRelationship';
 import { deriveWorkspaceState, type ProjectStatus } from '@/lib/workspace-stage';
 import { TONE_CLASS } from '@/lib/proposal-stage';
+import type { ActivityItem } from '@/lib/usePortal';
 
 type Card = {
   id: string; name: string; status: string; percentComplete: number; dueDate: string | null;
@@ -31,10 +33,15 @@ export default function HomePage() {
   const { me, projects, userName, canBilling, isOwner, loading } = useRelationship();
   const [cards, setCards] = useState<Card[] | undefined>(undefined);
   const [carePlan, setCarePlan] = useState<CarePlan>(null);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
 
   const load = useCallback(async () => {
-    const rel = await apiJson<{ projects: Card[]; carePlan: CarePlan }>('/portal/relationship-overview');
+    const [rel, act] = await Promise.all([
+      apiJson<{ projects: Card[]; carePlan: CarePlan }>('/portal/relationship-overview'),
+      apiJson<{ activities: ActivityItem[] }>('/portal/relationship-activity'),
+    ]);
     if (rel.status === 200) { setCards(rel.body.projects); setCarePlan(rel.body.carePlan ?? null); }
+    if (act.status === 200) setActivity(act.body.activities ?? []);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -73,6 +80,14 @@ export default function HomePage() {
               <div className="mt-3 space-y-4">
                 {(cards ?? []).map((c) => <ProjectCard key={c.id} card={c} isOwner={isOwner} />)}
               </div>
+            )}
+
+            {activity.length > 0 && (
+              <section className="mt-8">
+                <h2 className="text-lg font-extrabold tracking-tight text-white">Recent activity</h2>
+                <p className="mt-0.5 text-sm text-neutral-500">Milestones and moments across your relationship with us.</p>
+                <div className="mt-3"><ActivityTimeline items={activity} /></div>
+              </section>
             )}
           </>
         )}

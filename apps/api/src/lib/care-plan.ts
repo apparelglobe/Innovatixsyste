@@ -14,6 +14,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import { MOMENT, MOMENT_MESSAGE } from './relationship-moments';
+import { writeRelationshipActivity, systemActor } from './portal-activity';
 
 /** Exactly the fields safe to expose to a client. */
 const CLIENT_SAFE_SELECT = {
@@ -89,31 +90,20 @@ export async function selectClientCarePlanStatus(
  * loser raises P2002 which we swallow as "already emitted". This also makes ordinary retries and a
  * PAUSED→ACTIVE reactivation of the same plan no-ops (same id). No new column/constraint → no migration.
  *
- * The moment message is STATIC and money-free (rendered to all roles on the client timeline). A Care Plan
- * is org-scoped and PortalActivity.projectId is NOT NULL, so the row attaches to the org's most-recent
- * project; an org with a live plan but no project simply records nothing (documented edge, no migration).
+ * The moment message is STATIC and money-free (rendered to all roles on the client timeline). Slice 2:
+ * a Care Plan is a RELATIONSHIP-level fact, so the row is written with projectId=null + the plan's org —
+ * the pre-Slice-2 "attach to the org's most-recent project" heuristic is RETIRED. This now works for an
+ * org with a live plan and ZERO projects (which previously recorded nothing), and never mis-attributes
+ * the moment to an arbitrary project.
  */
 export async function emitRetainerActivated(
   prisma: PrismaClient,
   plan: { id: string; tenantId: string; clientOrgId: string },
 ): Promise<void> {
-  const project = await prisma.project.findFirst({
-    where: { tenantId: plan.tenantId, clientOrgId: plan.clientOrgId },
-    orderBy: { updatedAt: 'desc' },
-    select: { id: true },
-  });
-  if (!project) return; // no project to hang the moment on — skip
-  try {
-    await prisma.portalActivity.create({
-      data: {
-        id: `retainer-activated:${plan.id}`,
-        tenantId: plan.tenantId,
-        projectId: project.id,
-        type: MOMENT.RETAINER_ACTIVATED,
-        message: MOMENT_MESSAGE[MOMENT.RETAINER_ACTIVATED],
-      },
-    });
-  } catch (err) {
-    if ((err as { code?: string }).code !== 'P2002') throw err; // already emitted (race / retry / reactivation) → no-op
-  }
+  // Deterministic PK id makes concurrent activations / retries / a PAUSED→ACTIVE reactivation no-ops.
+  await writeRelationshipActivity(
+    prisma,
+    { tenantId: plan.tenantId, clientOrgId: plan.clientOrgId },
+    { id: `retainer-activated:${plan.id}`, type: MOMENT.RETAINER_ACTIVATED, message: MOMENT_MESSAGE[MOMENT.RETAINER_ACTIVATED], actor: systemActor() },
+  );
 }

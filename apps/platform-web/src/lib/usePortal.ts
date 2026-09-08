@@ -12,7 +12,11 @@ export type Project = {
   files: { id: string; name: string; category: string; sizeBytes: number | null; uploadedAt: string }[];
   members: { id: string; name: string; role: string }[];
   messages: { id: string; authorType: 'CLIENT' | 'TEAM'; body: string; createdAt: string }[];
+  // Slice 2 — this project's curated timeline (project-scoped, curated types only), with actor snapshots.
+  activities?: ActivityItem[];
 };
+// A curated timeline row (Slice 2). actorName is a snapshot rendered as the byline; the label is message.
+export type ActivityItem = { id: string; type: string; message: string; actorType?: string | null; actorName?: string | null; projectId?: string | null; createdAt: string };
 // A client-visible invoice. `kind`/billing-period fields are set on RETAINER (Care Plan) invoices.
 export type ClientInvoice = {
   id: string; number: string; amountCents: number; currency: string; status: string;

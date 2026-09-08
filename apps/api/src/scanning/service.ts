@@ -18,6 +18,7 @@ import { config } from '../config';
 import { storage } from '../storage';
 import { scanner, isRetryable, type ScanOutcome } from './scanner';
 import { notifyClientOrg, notifyStaff } from '../notifications/service';
+import { writeProjectActivity, systemActor } from '../lib/portal-activity';
 import { alert } from '../observability';
 import { incr } from '../observability/metrics';
 
@@ -116,7 +117,7 @@ async function finalizeAvailable(prisma: PrismaClient, file: ProjectFile): Promi
   const project = await prisma.project.findUnique({ where: { id: file.projectId }, select: { clientOrgId: true } });
   await prisma.auditEvent.create({ data: { tenantId: file.tenantId, entityType: 'ProjectFile', entityId: file.id, action: file.version > 1 ? 'FILE_VERSIONED' : 'FILE_UPLOADED', actorType: 'SYSTEM', data: { version: file.version } } }).catch(() => undefined);
   if (file.clientVisible && project) {
-    await prisma.portalActivity.create({ data: { tenantId: file.tenantId, projectId: file.projectId, type: 'FILE', message: file.version > 1 ? `File updated: ${file.name} (v${file.version})` : `File uploaded: ${file.name}` } }).catch(() => undefined);
+    await writeProjectActivity(prisma, { id: file.projectId, tenantId: file.tenantId, clientOrgId: project.clientOrgId }, { type: 'FILE', message: file.version > 1 ? `File updated: ${file.name} (v${file.version})` : `File uploaded: ${file.name}`, actor: systemActor() }).catch(() => undefined);
     await notifyClientOrg(prisma, file.tenantId, project.clientOrgId, { type: 'FILE_UPLOADED', title: file.version > 1 ? `Updated file: ${file.name} (v${file.version})` : `New file: ${file.name}`, projectId: file.projectId, linkPath: '/projects?tab=files', email: true }).catch(() => undefined);
   }
 }

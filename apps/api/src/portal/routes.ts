@@ -25,6 +25,7 @@ import {
 import { notifyStaff } from '../notifications/service';
 import { requireClientPermission, resolveClientRole } from '../client/authz';
 import { clientCan } from '../client/rbac';
+import { writeProjectActivity, buildProjectActivity, clientActor } from '../lib/portal-activity';
 import { selectClientCarePlan, selectClientCarePlanStatus } from '../lib/care-plan';
 import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
@@ -59,6 +60,18 @@ async function requireSession(req: FastifyRequest, reply: FastifyReply): Promise
     return null;
   }
   return { session, role };
+}
+
+// Slice 2: resolve the caller's CLIENT display-name SNAPSHOT for actor attribution on activities they
+// author (messages, approvals). Scoped to the caller's own membership; falls back to the session email if
+// the name is unset. This snapshot is stored on the row, so it survives the user's later rename/deletion.
+async function clientActorFor(session: Ctx['session']): Promise<ReturnType<typeof clientActor>> {
+  const u = await prisma.clientUser.findFirst({
+    where: { id: session.sub, clientOrgId: session.org, tenantId: session.tenant },
+    select: { firstName: true, lastName: true, email: true },
+  });
+  const name = u ? [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email : session.email;
+  return clientActor(session.sub, name);
 }
 
 // Relationship project ordering (Slice 1): active/in-flight → planning/discovery → complete, then the
@@ -300,6 +313,24 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     return reply.send({ ok: true, projects: orderProjectsForRelationship(projects) });
   });
 
+  // ── Relationship activity feed (Slice 2) — the curated, ORG-WIDE timeline for the Relationship Home.
+  //    Aggregates across the whole client relationship: curated project moments (projectId set) AND
+  //    relationship-level moments (projectId=null, e.g. RETAINER_ACTIVATED / NEW_PROJECT_STARTED). Filtered
+  //    to the curated allow-list so raw/internal events (MESSAGE, STATUS, raw APPROVAL…) never leak to the
+  //    client. Tenant + org scoped from the authenticated session — served on the tenant-leading
+  //    [tenantId, clientOrgId, createdAt] index. Served to ALL roles (money-free curated copy only).
+  app.get('/portal/relationship-activity', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    const activities = await prisma.portalActivity.findMany({
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, type: { in: CURATED_MOMENT_TYPES } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, type: true, message: true, projectId: true, actorType: true, actorName: true, createdAt: true },
+    });
+    return reply.send({ ok: true, activities });
+  });
+
   // ── Project detail (scoped) ──
   app.get('/portal/projects/:id', async (req, reply) => {
     const ctx = await requireSession(req, reply);
@@ -320,6 +351,10 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
         files: { where: { clientVisible: true, deletedAt: null, isCurrent: true, state: 'AVAILABLE', storageKey: { not: null } }, orderBy: { uploadedAt: 'desc' } },
         members: true,
         messages: { where: { internal: false }, orderBy: { createdAt: 'asc' } },
+        // Slice 2: this project's own curated timeline — the relation is keyed on projectId, so it returns
+        // ONLY this project's rows (never relationship-level projectId=null rows, never another project's),
+        // and the curated allow-list keeps raw/internal events off the client view.
+        activities: { where: { type: { in: CURATED_MOMENT_TYPES } }, orderBy: { createdAt: 'desc' }, take: 50, select: { id: true, type: true, message: true, actorType: true, actorName: true, createdAt: true } },
       },
     });
     if (!project) return reply.code(404).send({ ok: false, message: 'Not found' });
@@ -390,9 +425,13 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     const message = await prisma.portalMessage.create({
       data: { tenantId: ctx.session.tenant, projectId: project.id, authorType: 'CLIENT', authorUserId: ctx.session.sub, body: cleanMultiline(body.data.body, 4000) },
     });
-    await prisma.portalActivity.create({
-      data: { tenantId: ctx.session.tenant, projectId: project.id, type: 'MESSAGE', message: 'You sent a message to the delivery team' },
-    });
+    // Slice 2: event-neutral copy (never the viewer-relative "You sent…") + a CLIENT actor SNAPSHOT, so
+    // every teammate sees the true author and the attribution survives the author's later rename/removal.
+    await writeProjectActivity(
+      prisma,
+      { id: project.id, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      { type: 'MESSAGE', message: 'Message sent to the delivery team', actor: await clientActorFor(ctx.session) },
+    );
     await notifyStaff(prisma, ctx.session.tenant, { type: 'CLIENT_MESSAGE', title: 'New client message', body: 'A client replied on their project.', projectId: project.id, linkPath: `/admin/projects/${project.id}`, email: true });
     return reply.send({ ok: true, message: { id: message.id, authorType: message.authorType, body: message.body, createdAt: message.createdAt } });
   });
@@ -547,13 +586,18 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (approval.status !== 'PENDING') return reply.code(409).send({ ok: false, message: 'This approval has already been decided.' });
 
     const approved = body.data.decision === 'APPROVED';
+    // Both activity rows are CLIENT-authored: derive projectId + clientOrgId from the caller's authoritative
+    // scope (the approval was scoped to this org) via buildProjectActivity, and stamp a CLIENT actor
+    // snapshot. buildProjectActivity is used (not the async writer) so these stay in the atomic array-tx.
+    const activityCtx = { id: approval.projectId, tenantId: ctx.session.tenant, clientOrgId: ctx.session.org };
+    const actor = await clientActorFor(ctx.session);
     await prisma.$transaction([
       prisma.approval.update({
         where: { id: approval.id },
         data: { status: body.data.decision, decidedByUserId: ctx.session.sub, decidedAt: new Date(), note: body.data.note ?? null },
       }),
       prisma.portalActivity.create({
-        data: { tenantId: ctx.session.tenant, projectId: approval.projectId, type: 'APPROVAL', message: `Approval ${approved ? 'granted' : 'sent back for changes'}: ${approval.subject}` },
+        data: buildProjectActivity(activityCtx, { type: 'APPROVAL', message: `Approval ${approved ? 'granted' : 'sent back for changes'}: ${approval.subject}`, actor }),
       }),
       prisma.auditEvent.create({
         data: { tenantId: ctx.session.tenant, entityType: 'Approval', entityId: approval.id, action: `APPROVAL_${body.data.decision}`, actorType: 'CLIENT', actorId: ctx.session.sub },
@@ -565,7 +609,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
             prisma.milestone.update({ where: { id: approval.milestoneId }, data: { status: 'DONE', completedAt: new Date() } }),
             // S4: the curated "Milestone approved" relationship moment (the raw 'APPROVAL' row above
             // stays for the internal/admin log; the client timeline shows only this curated one).
-            prisma.portalActivity.create({ data: { tenantId: ctx.session.tenant, projectId: approval.projectId, type: MOMENT.MILESTONE_APPROVED, message: `${MOMENT_MESSAGE[MOMENT.MILESTONE_APPROVED]}: ${approval.milestone?.name ?? approval.subject}` } }),
+            prisma.portalActivity.create({ data: buildProjectActivity(activityCtx, { type: MOMENT.MILESTONE_APPROVED, message: `${MOMENT_MESSAGE[MOMENT.MILESTONE_APPROVED]}: ${approval.milestone?.name ?? approval.subject}`, actor }) }),
           ]
         : []),
     ]);

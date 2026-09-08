@@ -47,4 +47,7 @@ export const MOMENT_MESSAGE: Record<string, string> = {
   [MOMENT.PROJECT_LAUNCHED]: 'Project launched',
   // P3.4 — static + money-free (rendered to all roles on the client timeline; never embed price/amount).
   [MOMENT.RETAINER_ACTIVATED]: 'Care Plan activated — monitoring & support',
+  // Slice 2 — relationship-level (projectId=null): the engagement expanded to another project. Emitters
+  // may append the new project's name; this is the base copy.
+  [MOMENT.NEW_PROJECT_STARTED]: 'New project started',
 };

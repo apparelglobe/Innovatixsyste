@@ -107,10 +107,11 @@ async function seedPortal(tenantId: string) {
   });
 
   await prisma.portalActivity.createMany({
+    // Slice 2: demo activities carry their owning org (clientOrgId) and a SYSTEM actor (seed-generated).
     data: [
-      { tenantId, projectId: project.id, type: 'REPORT', message: 'Weekly development report published' },
-      { tenantId, projectId: project.id, type: 'MILESTONE', message: 'System Architecture milestone approved' },
-      { tenantId, projectId: project.id, type: 'FILE', message: 'Solution Architecture.pdf uploaded' },
+      { tenantId, clientOrgId: org.id, projectId: project.id, type: 'REPORT', message: 'Weekly development report published', actorType: 'SYSTEM' },
+      { tenantId, clientOrgId: org.id, projectId: project.id, type: 'MILESTONE', message: 'System Architecture milestone approved', actorType: 'SYSTEM' },
+      { tenantId, clientOrgId: org.id, projectId: project.id, type: 'FILE', message: 'Solution Architecture.pdf uploaded', actorType: 'SYSTEM' },
     ],
   });
 

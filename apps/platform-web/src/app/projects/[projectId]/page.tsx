@@ -14,11 +14,12 @@ import { useRelationship } from '@/lib/useRelationship';
 import { api, apiJson } from '@/lib/portal-api';
 import { fmtDate } from '@/lib/fmt';
 import type { Project } from '@/lib/usePortal';
+import { ActivityTimeline } from '@/components/ActivityTimeline';
 
-const TABS = ['Milestones', 'Reports', 'Files', 'Approvals', 'Team'] as const;
+const TABS = ['Milestones', 'Reports', 'Files', 'Approvals', 'Team', 'Activity'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_SLUG: Record<Tab, string> = { Milestones: 'milestones', Reports: 'reports', Files: 'files', Approvals: 'approvals', Team: 'team' };
-const SLUG_TAB: Record<string, Tab> = { milestones: 'Milestones', reports: 'Reports', files: 'Files', approvals: 'Approvals', team: 'Team' };
+const TAB_SLUG: Record<Tab, string> = { Milestones: 'milestones', Reports: 'reports', Files: 'files', Approvals: 'approvals', Team: 'team', Activity: 'activity' };
+const SLUG_TAB: Record<string, Tab> = { milestones: 'Milestones', reports: 'Reports', files: 'Files', approvals: 'Approvals', team: 'Team', activity: 'Activity' };
 const MS_LABEL: Record<string, string> = { DONE: 'Complete', IN_PROGRESS: 'In progress', PLANNED: 'Planned' };
 const CAT_LABEL: Record<string, string> = { CONTRACT: 'Contract', INVOICE: 'Invoice', DELIVERABLE: 'Deliverable', OTHER: 'File' };
 const kb = (b?: number | null) => (b ? `${Math.round(b / 1024).toLocaleString()} KB` : '');
@@ -154,6 +155,10 @@ function ProjectDetail() {
                     ))}
                   </div>
                 ) : <p className="text-neutral-400">Your delivery team will appear here once assigned.</p>
+              )}
+
+              {tab === 'Activity' && (
+                <ActivityTimeline items={p.activities ?? []} emptyLabel="No milestones or moments recorded for this project yet." />
               )}
             </div>
           </>

@@ -342,9 +342,10 @@ model ClientOrg {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     ClientUser[]
-  projects  Project[]
-  carePlans CarePlan[]
+  users      ClientUser[]
+  projects   Project[]
+  carePlans  CarePlan[]
+  activities PortalActivity[] // Slice 2 — direct relationship-activity ownership
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -720,15 +721,30 @@ model ProjectMember {
 
 // Client-facing project activity feed (report generated, milestone approved, file uploaded…).
 model PortalActivity {
-  id        String   @id @default(cuid())
-  tenantId  String
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id])
-  type      String
-  message   String
-  createdAt DateTime @default(now())
+  id          String     @id @default(cuid())
+  tenantId    String
+  // Direct relationship ownership (Slice 2). Every activity knows its owning org without a project join —
+  // the relationship feed queries on it. FK is explicit ON DELETE RESTRICT (orgs are not deleted).
+  clientOrgId String
+  clientOrg   ClientOrg  @relation(fields: [clientOrgId], references: [id], onDelete: Restrict)
+  // NULLABLE (Slice 2): projectId=set → "happened to Project X"; projectId=null → a relationship-level
+  // event (RETAINER_ACTIVATED, NEW_PROJECT_STARTED). onDelete is EXPLICITLY Restrict — Prisma's default
+  // for an optional relation is SetNull, which we must NOT use: a deleted project must never silently
+  // reclassify a project-scoped historical row into a relationship-level one.
+  projectId   String?
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  type        String
+  message     String
+  // Actor attribution as SNAPSHOTS (Slice 2) — nullable, NO foreign keys. actorName is captured at event
+  // time so the timeline survives rename/deactivation/deletion of the underlying user; actorId is a soft
+  // reference (clientUser/staffUser id) never dereferenced for display. Legacy rows stay null (neutral).
+  actorType   ActorType?
+  actorId     String?
+  actorName   String?
+  createdAt   DateTime   @default(now())
 
-  @@index([projectId, createdAt])
+  @@index([tenantId, clientOrgId, createdAt])
+  @@index([tenantId, projectId, createdAt])
   @@map("portal_activities")
 }
 

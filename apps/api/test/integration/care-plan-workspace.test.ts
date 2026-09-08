@@ -51,8 +51,10 @@ const overview = (u: any, tenant = tenantId) => app.inject({ method: 'GET', url:
 const project = (u: any) => app.inject({ method: 'GET', url: '/v1/portal/project', headers: auth(u) });
 const activate = (carePlanId: string) =>
   app.inject({ method: 'PATCH', url: `/v1/admin/care-plans/${carePlanId}`, headers: { authorization: staffAuthz, 'content-type': 'application/json' }, payload: JSON.stringify({ status: 'ACTIVE' }) });
+// Slice 2: RETAINER_ACTIVATED is a RELATIONSHIP-level moment (projectId=null), owned directly by
+// clientOrgId — so it is counted by clientOrgId, not via a project relation.
 const raCount = (clientOrgId: string, tenant = tenantId) =>
-  prisma.portalActivity.count({ where: { tenantId: tenant, type: MOMENT.RETAINER_ACTIVATED, project: { clientOrgId } } });
+  prisma.portalActivity.count({ where: { tenantId: tenant, type: MOMENT.RETAINER_ACTIVATED, clientOrgId } });
 
 before(async () => {
   app = await buildApp();
@@ -136,13 +138,15 @@ test('overview: a non-default-tenant session is rejected (401) — cross-tenant 
 });
 
 // ── RETAINER_ACTIVATED emission — atomic once-only ──
-test('emitter: one call writes exactly one moment with the exact message, attached to the org project', async () => {
-  const o = await mkOrg(); const proj = await mkProject(o.id); const cp = await mkCarePlan(o.id, 'ACTIVE');
+test('emitter: one call writes exactly one RELATIONSHIP-level moment (projectId=null, owned by org) with the exact message + SYSTEM actor', async () => {
+  const o = await mkOrg(); await mkProject(o.id); const cp = await mkCarePlan(o.id, 'ACTIVE');
   await emitRetainerActivated(prisma, { id: cp.id, tenantId, clientOrgId: o.id });
-  const rows = await prisma.portalActivity.findMany({ where: { type: MOMENT.RETAINER_ACTIVATED, project: { clientOrgId: o.id } } });
+  const rows = await prisma.portalActivity.findMany({ where: { type: MOMENT.RETAINER_ACTIVATED, clientOrgId: o.id } });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].message, RA_MESSAGE);
-  assert.equal(rows[0].projectId, proj.id);
+  assert.equal(rows[0].projectId, null, 'RETAINER_ACTIVATED is relationship-level — never attached to a project (heuristic retired)');
+  assert.equal(rows[0].clientOrgId, o.id);
+  assert.equal(rows[0].actorType, 'SYSTEM');
   assert.equal(rows[0].id, `retainer-activated:${cp.id}`);
 });
 
@@ -160,10 +164,12 @@ test('emitter: TWO CONCURRENT emissions produce exactly one moment (DB primary-k
   assert.equal(await raCount(o.id), 1);
 });
 
-test('emitter: an org with a live plan but NO project records nothing (no crash)', async () => {
-  const o = await mkOrg(); const cp = await mkCarePlan(o.id, 'ACTIVE'); // no project
+test('emitter: an org with a live plan and ZERO projects now RECORDS the moment (Slice 2 — heuristic retired)', async () => {
+  const o = await mkOrg(); const cp = await mkCarePlan(o.id, 'ACTIVE'); // no project at all
   await emitRetainerActivated(prisma, { id: cp.id, tenantId, clientOrgId: o.id });
-  assert.equal(await raCount(o.id), 0);
+  assert.equal(await raCount(o.id), 1, 'a project-less org used to drop the moment; it is now relationship-level and recorded');
+  const row = await prisma.portalActivity.findFirst({ where: { type: MOMENT.RETAINER_ACTIVATED, clientOrgId: o.id } });
+  assert.equal(row?.projectId, null);
 });
 
 // ── Endpoint-level: two CONCURRENT activation requests → exactly one moment ──
@@ -173,7 +179,7 @@ test('activation endpoint: two concurrent PATCH →ACTIVE create exactly one RET
   const [r1, r2] = await Promise.all([activate(cp.id), activate(cp.id)]);
   assert.ok([200, 409].includes(r1.statusCode) && [200, 409].includes(r2.statusCode));
   assert.equal(await raCount(o.id), 1, 'exactly one moment despite two concurrent activations');
-  const moment = await prisma.portalActivity.findFirst({ where: { type: MOMENT.RETAINER_ACTIVATED, project: { clientOrgId: o.id } } });
+  const moment = await prisma.portalActivity.findFirst({ where: { type: MOMENT.RETAINER_ACTIVATED, clientOrgId: o.id } });
   assert.equal(moment?.message, RA_MESSAGE);
 });
 
@@ -187,14 +193,17 @@ test('activation endpoint: PAUSED→ACTIVE reactivation does NOT emit a second m
   assert.equal(await raCount(o.id), 1, 'reactivation reuses the deterministic id → still one moment');
 });
 
-test('timeline: the emitted moment is client-visible on the org project overview, and only there', async () => {
+test('timeline: the emitted moment is client-visible on the RELATIONSHIP activity feed (org-wide), scoped to the org', async () => {
   const o = await mkOrg(); const owner = await mkUser(o.id, 'OWNER'); await mkProject(o.id);
   const cp = await mkCarePlan(o.id, 'DRAFT');
   await activate(cp.id);
-  const acts = JSON.parse((await overview(owner)).body).project?.activities ?? [];
-  assert.ok(acts.some((a: any) => a.type === MOMENT.RETAINER_ACTIVATED && a.message === RA_MESSAGE), 'moment shows on the client timeline');
+  // Slice 2: relationship-level moments surface on /portal/relationship-activity, NOT the project overview.
+  const feed = JSON.parse((await app.inject({ method: 'GET', url: '/v1/portal/relationship-activity', headers: auth(owner) })).body).activities ?? [];
+  const ra = feed.find((a: any) => a.type === MOMENT.RETAINER_ACTIVATED);
+  assert.ok(ra && ra.message === RA_MESSAGE, 'moment shows on the relationship activity feed');
+  assert.equal(ra.projectId, null, 'served as a relationship-level (projectId=null) row');
 
   const other = await mkOrg(); const ownerOther = await mkUser(other.id, 'OWNER'); await mkProject(other.id);
-  const otherActs = JSON.parse((await overview(ownerOther)).body).project?.activities ?? [];
-  assert.ok(!otherActs.some((a: any) => a.type === MOMENT.RETAINER_ACTIVATED), 'another org never sees the moment');
+  const otherFeed = JSON.parse((await app.inject({ method: 'GET', url: '/v1/portal/relationship-activity', headers: auth(ownerOther) })).body).activities ?? [];
+  assert.ok(!otherFeed.some((a: any) => a.type === MOMENT.RETAINER_ACTIVATED), 'another org never sees the moment');
 });

@@ -5,6 +5,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { notifyClientOrg, notifyStaff } from '../notifications/service';
 import { activateFromDeposit } from '../activation/service';
+import { writeProjectActivity, systemActor } from '../lib/portal-activity';
 
 export type MarkPaidResult = 'paid' | 'already' | 'missing';
 
@@ -33,9 +34,11 @@ export async function markInvoicePaid(prisma: PrismaClient, invoiceId: string, s
   }
 
   if (inv.project) {
-    await prisma.portalActivity.create({
-      data: { tenantId: inv.tenantId, projectId: inv.project.id, type: 'INVOICE', message: `Invoice ${inv.number} paid` },
-    });
+    await writeProjectActivity(
+      prisma,
+      { id: inv.project.id, tenantId: inv.tenantId, clientOrgId: inv.project.clientOrgId },
+      { type: 'INVOICE', message: `Invoice ${inv.number} paid`, actor: systemActor() },
+    );
     await notifyClientOrg(prisma, inv.tenantId, inv.project.clientOrgId, { type: 'INVOICE_CREATED', title: `Payment received for ${inv.number}`, body: 'Thank you — your payment has been received.', projectId: inv.project.id, linkPath: `/invoices/${inv.id}`, email: true });
     await notifyStaff(prisma, inv.tenantId, { type: 'INVOICE_CREATED', title: `Invoice ${inv.number} paid`, projectId: inv.project.id, linkPath: `/admin/projects/${inv.project.id}`, email: true });
   } else {

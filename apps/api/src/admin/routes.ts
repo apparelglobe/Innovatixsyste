@@ -33,8 +33,11 @@ import { inviteClientUser } from './client-users';
 import { issueInvitation, resendInvitation, revokeInvitation } from '../invitations/service';
 import { invitationStatus } from '../lib/invitations';
 import { scanUploadedFile } from '../scanning/service';
+import { writeProjectActivity, adminActor } from '../lib/portal-activity';
 
-type StaffCtx = { session: NonNullable<ReturnType<typeof verifyStaff>>; tenantId: string };
+// staffName is the ADMIN actor snapshot recorded on every activity this staff member authors (Slice 2) —
+// the staff record is already fetched for the auth check, so no extra query.
+type StaffCtx = { session: NonNullable<ReturnType<typeof verifyStaff>>; tenantId: string; staffName: string };
 
 export async function requireStaff(req: FastifyRequest, reply: FastifyReply, action?: Action): Promise<StaffCtx | null> {
   const cookie = (req as unknown as { cookies?: Record<string, string> }).cookies?.[STAFF_COOKIE];
@@ -46,7 +49,7 @@ export async function requireStaff(req: FastifyRequest, reply: FastifyReply, act
   const staff = await prisma.staffUser.findFirst({ where: { id: session.sub, tenantId: tenant.id, active: true } });
   if (!staff) { reply.code(401).send({ ok: false }); return null; }
   if (action && !can(session.role, action)) { reply.code(403).send({ ok: false, message: 'Insufficient permissions' }); return null; }
-  return { session, tenantId: tenant.id };
+  return { session, tenantId: tenant.id, staffName: [staff.firstName, staff.lastName].filter(Boolean).join(' ') || staff.email };
 }
 
 /** Ensure the project belongs to the tenant; returns it (with clientOrgId) or null. */
@@ -57,8 +60,11 @@ async function scopedProject(tenantId: string, id: string) {
 export async function audit(tenantId: string, staffId: string, entityType: string, entityId: string, action: string, data?: object) {
   await prisma.auditEvent.create({ data: { tenantId, entityType, entityId, action, actorType: 'ADMIN', actorId: staffId, data: data ?? undefined } });
 }
-async function activity(tenantId: string, projectId: string, type: string, message: string) {
-  await prisma.portalActivity.create({ data: { tenantId, projectId, type, message } });
+// A staff-authored PROJECT-scoped activity. clientOrgId + projectId are BOTH derived from the passed
+// project object (the ownership-safe writer forbids a mismatched pair); the ADMIN actor snapshot comes
+// from the authenticated staff context. Pass a deterministic `id` for idempotent moments.
+async function activity(ctx: StaffCtx, project: { id: string; clientOrgId: string }, type: string, message: string, id?: string) {
+  await writeProjectActivity(prisma, { id: project.id, tenantId: ctx.tenantId, clientOrgId: project.clientOrgId }, { type, message, actor: adminActor(ctx.session.sub, ctx.staffName), ...(id ? { id } : {}) });
 }
 
 export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
@@ -162,12 +168,14 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     await prisma.project.update({ where: { id: p.id }, data: { ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.status ? { status: b.data.status } : {}), ...(b.data.percentComplete != null ? { percentComplete: b.data.percentComplete } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? parseDateInput(b.data.dueDate) : null } : {}), ...nextUpdatePatch } });
     await audit(ctx.tenantId, ctx.session.sub, 'Project', p.id, 'PROJECT_UPDATED', b.data);
     if (statusChanged) {
-      await activity(ctx.tenantId, p.id, 'STATUS', `Project status changed to ${b.data.status}`);
-      // S4: the curated "Project launched" relationship moment (the raw STATUS row above stays for
-      // the internal/admin log; the client timeline shows only this curated one). Recorded ONCE per
-      // project — a LAUNCHED → ON_HOLD → LAUNCHED round-trip must not add a second launch moment.
-      if (b.data.status === 'LAUNCHED' && (await prisma.portalActivity.count({ where: { projectId: p.id, type: MOMENT.PROJECT_LAUNCHED } })) === 0) {
-        await activity(ctx.tenantId, p.id, MOMENT.PROJECT_LAUNCHED, MOMENT_MESSAGE[MOMENT.PROJECT_LAUNCHED]);
+      await activity(ctx, p, 'STATUS', `Project status changed to ${b.data.status}`);
+      // S4: the curated "Project launched" relationship moment (the raw STATUS row above stays for the
+      // internal/admin log; the client timeline shows only this curated one). Slice 2: the raceable
+      // count-then-create is replaced by a DETERMINISTIC PK id `project-launched:<projectId>` — Postgres's
+      // PK index guarantees exactly one row under concurrency, and a LAUNCHED → ON_HOLD → LAUNCHED
+      // round-trip re-uses the same id (P2002 swallowed) so it never adds a second launch moment.
+      if (b.data.status === 'LAUNCHED') {
+        await activity(ctx, p, MOMENT.PROJECT_LAUNCHED, MOMENT_MESSAGE[MOMENT.PROJECT_LAUNCHED], `project-launched:${p.id}`);
       }
       await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'PROJECT_STATUS_CHANGED', title: `Project status: ${b.data.status}`, projectId: p.id, linkPath: '/', email: true });
     }
@@ -196,7 +204,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     await prisma.milestone.update({ where: { id: m.id }, data: { ...(b.data.status ? { status: b.data.status, completedAt: done ? new Date() : null } : {}), ...(b.data.name ? { name: cleanText(b.data.name, 200) } : {}), ...(b.data.dueDate !== undefined ? { dueDate: b.data.dueDate ? parseDateInput(b.data.dueDate) : null } : {}) } });
     await audit(ctx.tenantId, ctx.session.sub, 'Milestone', m.id, 'MILESTONE_UPDATED', b.data);
     if (b.data.status) {
-      await activity(ctx.tenantId, m.project.id, 'MILESTONE', `Milestone "${m.name}" → ${b.data.status}`);
+      await activity(ctx, m.project, 'MILESTONE', `Milestone "${m.name}" → ${b.data.status}`);
       await notifyClientOrg(prisma, ctx.tenantId, m.project.clientOrgId, { type: 'MILESTONE_UPDATED', title: `Milestone updated: ${m.name}`, projectId: m.project.id, linkPath: '/projects?tab=milestones', email: true });
     }
     return reply.send({ ok: true });
@@ -210,7 +218,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (!b.success) return reply.code(400).send({ ok: false });
     const report = await prisma.projectReport.create({ data: { tenantId: ctx.tenantId, projectId: p.id, kind: b.data.kind, title: cleanText(b.data.title, 200), summary: cleanMultiline(b.data.summary, 8000), periodStart: b.data.periodStart ? parseDateInput(b.data.periodStart) : null, periodEnd: b.data.periodEnd ? parseDateInput(b.data.periodEnd) : null } });
     await audit(ctx.tenantId, ctx.session.sub, 'ProjectReport', report.id, 'REPORT_PUBLISHED');
-    await activity(ctx.tenantId, p.id, 'REPORT', `${b.data.kind === 'DAILY' ? 'Daily' : 'Weekly'} report published: ${report.title}`);
+    await activity(ctx, p, 'REPORT', `${b.data.kind === 'DAILY' ? 'Daily' : 'Weekly'} report published: ${report.title}`);
     await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'REPORT_PUBLISHED', title: `New ${b.data.kind.toLowerCase()} report: ${report.title}`, projectId: p.id, linkPath: '/projects?tab=reports', email: true });
     return reply.send({ ok: true, report: { id: report.id } });
   });
@@ -223,7 +231,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (!b.success) return reply.code(400).send({ ok: false });
     const ap = await prisma.approval.create({ data: { tenantId: ctx.tenantId, projectId: p.id, type: b.data.type, subject: cleanText(b.data.subject, 300), milestoneId: b.data.milestoneId ?? null, relatedType: b.data.relatedType ?? null, relatedId: b.data.relatedId ?? null, requestedByStaffId: ctx.session.sub } });
     await audit(ctx.tenantId, ctx.session.sub, 'Approval', ap.id, 'APPROVAL_REQUESTED', { type: b.data.type });
-    await activity(ctx.tenantId, p.id, 'APPROVAL', `Approval requested: ${ap.subject}`);
+    await activity(ctx, p, 'APPROVAL', `Approval requested: ${ap.subject}`);
     await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'APPROVAL_REQUESTED', title: `Approval needed: ${ap.subject}`, projectId: p.id, linkPath: '/', email: true });
     return reply.send({ ok: true, approval: { id: ap.id } });
   });
@@ -237,7 +245,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const internal = b.data.internal === true;
     const msg = await prisma.portalMessage.create({ data: { tenantId: ctx.tenantId, projectId: p.id, authorType: 'TEAM', authorStaffId: ctx.session.sub, internal, body: cleanMultiline(b.data.body, 4000) } });
     if (!internal) {
-      await activity(ctx.tenantId, p.id, 'MESSAGE', 'The delivery team sent you a message');
+      await activity(ctx, p, 'MESSAGE', 'The delivery team sent a message');
       await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'TEAM_MESSAGE', title: 'New message from your delivery team', projectId: p.id, linkPath: '/messages', email: true });
     }
     await audit(ctx.tenantId, ctx.session.sub, 'PortalMessage', msg.id, internal ? 'INTERNAL_NOTE' : 'TEAM_MESSAGE');
@@ -292,7 +300,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     await audit(ctx.tenantId, ctx.session.sub, 'Invoice', inv.id, 'INVOICE_CREATED', { number: inv.number, status, amountCents });
-    await activity(ctx.tenantId, p.id, 'INVOICE', `Invoice ${inv.number} ${status === 'SENT' ? 'sent' : 'drafted'}`);
+    await activity(ctx, p, 'INVOICE', `Invoice ${inv.number} ${status === 'SENT' ? 'sent' : 'drafted'}`);
     if (status === 'SENT') await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'INVOICE_CREATED', title: `New invoice ${inv.number}`, projectId: p.id, linkPath: '/invoices', email: true });
     return reply.send({ ok: true, invoice: { id: inv.id } });
   });
@@ -318,7 +326,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     if (status) {
       await audit(ctx.tenantId, ctx.session.sub, 'Invoice', inv.id, `INVOICE_${status}`, { number: inv.number });
       if (inv.project) {
-        await activity(ctx.tenantId, inv.project.id, 'INVOICE', `Invoice ${inv.number} marked ${status}`);
+        await activity(ctx, inv.project, 'INVOICE', `Invoice ${inv.number} marked ${status}`);
         if (status === 'SENT') await notifyClientOrg(prisma, ctx.tenantId, inv.project.clientOrgId, { type: 'INVOICE_CREATED', title: `New invoice ${inv.number}`, projectId: inv.project.id, linkPath: '/invoices', email: true });
       }
     }
@@ -549,7 +557,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       if (r.code === 'ALREADY_MEMBER') return reply.code(409).send({ ok: false, message: 'That person already has portal access for this client.' });
       return reply.code(409).send({ ok: false, message: 'That email is already used by another client organization.' });
     }
-    await activity(ctx.tenantId, p.id, 'PROJECT', `Client contact invited: ${b.data.email}`);
+    await activity(ctx, { id: p.id, clientOrgId: p.clientOrg.id }, 'PROJECT', `Client contact invited: ${b.data.email}`);
     // No password/secret is ever returned — the setup link is emailed to the recipient.
     return reply.send({ ok: true, invitationId: r.invitationId, refreshed: r.refreshed });
   });

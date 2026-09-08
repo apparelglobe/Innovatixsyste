@@ -12,6 +12,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { convertLead, createEngagementProject } from '../admin/conversion';
 import { MOMENT, MOMENT_MESSAGE, BACKFILL_MOMENT_TYPES } from '../lib/relationship-moments';
+import { buildProjectActivity, systemActor } from '../lib/portal-activity';
 
 export async function activateFromDeposit(prisma: PrismaClient, invoiceId: string): Promise<void> {
   const inv = await prisma.invoice.findUnique({
@@ -73,7 +74,10 @@ export async function activateFromDeposit(prisma: PrismaClient, invoiceId: strin
     if (contract?.signedAt) moments.push({ type: MOMENT.AGREEMENT_SIGNED, message: MOMENT_MESSAGE[MOMENT.AGREEMENT_SIGNED], createdAt: contract.signedAt });
     if (inv.paidAt) moments.push({ type: MOMENT.ACTIVATION_PAYMENT_RECEIVED, message: MOMENT_MESSAGE[MOMENT.ACTIVATION_PAYMENT_RECEIVED], createdAt: inv.paidAt });
     moments.push({ type: MOMENT.PROJECT_STARTED, message: MOMENT_MESSAGE[MOMENT.PROJECT_STARTED], createdAt: now });
+    // These pre-portal moments stay PROJECT-scoped (attached to the new project). System actor — there is
+    // no interactive user at deposit-paid time. clientOrgId is derived from the project context, not free.
+    const projectCtx = { id: projectId, tenantId: inv.tenantId, clientOrgId: result.clientOrgId };
     await prisma.portalActivity.deleteMany({ where: { projectId, type: { in: BACKFILL_MOMENT_TYPES } } });
-    await prisma.portalActivity.createMany({ data: moments.map((m) => ({ tenantId: inv.tenantId, projectId, type: m.type, message: m.message, createdAt: m.createdAt })) });
+    await prisma.portalActivity.createMany({ data: moments.map((m) => buildProjectActivity(projectCtx, { type: m.type, message: m.message, createdAt: m.createdAt, actor: systemActor() })) });
   }
 }
