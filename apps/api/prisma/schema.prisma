@@ -346,6 +346,7 @@ model ClientOrg {
   projects   Project[]
   carePlans  CarePlan[]
   activities PortalActivity[] // Slice 2 — direct relationship-activity ownership
+  tickets    Ticket[] // Slice 3 — relationship-owned support tickets
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -436,6 +437,7 @@ model Project {
   messages   PortalMessage[]
   members    ProjectMember[]
   activities PortalActivity[]
+  tickets    Ticket[] // Slice 3 — optional project link on support tickets (SET NULL on delete)
   activatedFrom Proposal[]     @relation("ProposalActivation")
 
   @@index([tenantId, clientOrgId])
@@ -748,6 +750,59 @@ model PortalActivity {
   @@map("portal_activities")
 }
 
+// ── Client support tickets (Slice 3) ─────────────────────────────────────────
+// Relationship-owned (tenantId + clientOrgId). projectId is OPTIONAL and ON DELETE SET NULL, so a support
+// record survives a project's deletion (the link clears; the history stays). clientOrg FK is RESTRICT.
+// Dedicated models — PortalMessage is deliberately NOT reused (it is project-mandatory). Idempotency is
+// DB-backed: clientRequestId (client-supplied Idempotency-Key) + requestHash (sha256 of the canonical
+// payload) with scoped partial-unique constraints — create scoped to the org, reply scoped to the ticket.
+model Ticket {
+  id                    String         @id @default(cuid())
+  tenantId              String
+  clientOrgId           String
+  clientOrg             ClientOrg      @relation(fields: [clientOrgId], references: [id], onDelete: Restrict)
+  projectId             String?
+  project               Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  number                String // human ref "TKT-000001" via nextDocumentNumber (6-digit)
+  subject               String
+  category              TicketCategory
+  status                TicketStatus   @default(OPEN)
+  createdByClientUserId String // soft ref (no FK) — snapshot below survives deletion
+  createdByName         String? // author name snapshot
+  clientRequestId       String? // create Idempotency-Key (nullable → partial unique)
+  requestHash           String? // sha256 of the create payload — replay vs 409 conflict
+  lastMessageAt         DateTime       @default(now())
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  closedAt              DateTime?
+
+  messages TicketMessage[]
+
+  @@unique([tenantId, number])
+  @@unique([clientOrgId, clientRequestId])
+  @@index([tenantId, clientOrgId, status, lastMessageAt])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id              String            @id @default(cuid())
+  tenantId        String
+  ticketId        String
+  ticket          Ticket            @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  authorType      MessageAuthorType // reuse {CLIENT, TEAM}
+  authorId        String? // soft ref (clientUser/staff id)
+  authorName      String? // author name snapshot — never viewer-relative "You"
+  internal        Boolean           @default(false) // staff-only note; client reads filter internal:false
+  body            String
+  clientRequestId String? // reply Idempotency-Key (nullable → partial unique)
+  requestHash     String? // sha256 of the reply payload
+  createdAt       DateTime          @default(now())
+
+  @@unique([ticketId, clientRequestId])
+  @@index([ticketId, createdAt])
+  @@map("ticket_messages")
+}
+
 // ── Delivery side (staff) ────────────────────────────────────────────────────
 model StaffUser {
   id           String    @id @default(cuid())
@@ -1008,6 +1063,7 @@ enum NotificationType {
   PROPOSAL_ACCEPTED
   CONTRACT_SIGNED
   DEPOSIT_PAID
+  TICKET_MESSAGE // Slice 3 — support ticket opened / replied
 }
 
 enum ClientUserRole {
@@ -1122,6 +1178,24 @@ enum MessageAuthorType {
   TEAM
 }
 
+// Slice 3 — client support tickets
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CLIENT
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  GENERAL
+  PROJECT
+  BILLING
+  TECHNICAL
+  CARE_PLAN
+  OTHER
+}
+
 enum LeadStatus {
   NEW
   WORKING
@@ -1190,6 +1264,7 @@ enum JobType {
   SLA_WARNING
   PROPOSAL_EXPIRE
   GENERATE_RETAINER_INVOICE // Phase 3 (P3.2) — recurring Care Plan invoice generation
+  TICKET_NOTIFY // Slice 3 — durable ticket-activity email to staff
 }
 
 enum JobStatus {

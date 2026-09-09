@@ -12,6 +12,7 @@ import {
   bookingConfirmEmail,
   slaWarningEmail,
   sideEffectFailureAlertEmail,
+  notificationEmail,
 } from '../email/templates';
 import { config } from '../config';
 import { alert } from '../observability';
@@ -123,6 +124,22 @@ async function handle(prisma: PrismaClient, job: SideEffectJob): Promise<void> {
       // Phase 3 — recurring Care Plan invoice. Idempotent + atomic (see billing/retainer.ts).
       await generateRetainerInvoice(prisma, job);
       return;
+    case 'TICKET_NOTIFY': {
+      // Slice 3 — durable staff email for a client-opened/replied support ticket. The in-app inbox row is
+      // written best-effort at request time (notifyStaff, email:false); this job owns the retried email.
+      const ticketId = String(p.ticketId ?? '');
+      const ticket = ticketId ? await prisma.ticket.findUnique({ where: { id: ticketId } }) : null;
+      if (!ticket) return; // ticket vanished (e.g. cleaned up) → nothing to send
+      const verb = p.event === 'replied' ? 'reply' : 'ticket';
+      const url = (config.PORTAL_WEB_ORIGIN[0] || 'http://localhost:3001') + '/admin';
+      await sendTransactionalEmail(prisma, {
+        tenantId: job.tenantId,
+        type: 'NOTIFICATION',
+        to: config.EMAIL_INTERNAL_TO,
+        built: notificationEmail(`Support ${verb}: ${ticket.number}`, ticket.subject, url),
+      });
+      return;
+    }
     default:
       throw new Error(`unknown job type: ${job.type}`);
   }

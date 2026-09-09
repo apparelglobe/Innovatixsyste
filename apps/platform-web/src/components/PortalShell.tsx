@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Logo } from './Logo';
 import {
-  Home, FolderKanban, Receipt, MessageSquare, LogOut, Settings, ChevronDown,
+  Home, FolderKanban, Receipt, MessageSquare, LifeBuoy, LogOut, Settings, ChevronDown,
 } from 'lucide-react';
 import { api } from '@/lib/portal-api';
 import { NotificationBell } from './NotificationBell';
 
-// S5.1 — minimal nav (Canon §6): Home · Projects · Billing · Messages.
+// S5.1 — minimal nav (Canon §6): Home · Projects · Billing · Messages · Support.
 // Milestones / Reports / Files / Team fold under Projects; Settings moves to the account menu.
 // Keys are kept stable (`overview`, `invoices`) so existing pages resolve their highlight unchanged.
 const NAV = [
@@ -17,6 +17,7 @@ const NAV = [
   { key: 'projects', icon: <FolderKanban size={16} />, label: 'Projects', href: '/projects' },
   { key: 'invoices', icon: <Receipt size={16} />, label: 'Billing', href: '/invoices' },
   { key: 'messages', icon: <MessageSquare size={16} />, label: 'Messages', href: '/messages' },
+  { key: 'tickets', icon: <LifeBuoy size={16} />, label: 'Support', href: '/tickets' }, // Slice 3
 ];
 
 export function PortalShell({

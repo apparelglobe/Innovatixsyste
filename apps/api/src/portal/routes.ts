@@ -31,6 +31,7 @@ import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
 import { findClientOrgInvoice, findClientVisibleFile } from '../lib/scoped';
 import { sendFileDownload } from '../lib/download';
+import { createTicket, replyToTicket, listTickets, getTicketDetail, type TicketCtx } from '../lib/tickets';
 import { randomUUID } from 'node:crypto';
 
 type Ctx = { session: NonNullable<ReturnType<typeof verifySession>>; role: ClientUserRole };
@@ -616,6 +617,85 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     // Notify the delivery team of the client's decision.
     await notifyStaff(prisma, ctx.session.tenant, { type: 'APPROVAL_COMPLETED', title: `Client ${approved ? 'approved' : 'requested changes'}: ${approval.subject}`, projectId: approval.projectId, linkPath: `/admin/projects/${approval.projectId}`, email: true });
     return reply.send({ ok: true });
+  });
+
+  // ── Support tickets (Slice 3) ──────────────────────────────────────────────
+  // Relationship-owned (tenant+org from the session). Both OWNER and MEMBER may create/read/reply.
+  // Client endpoints REQUIRE an Idempotency-Key header (DB-backed idempotency, never frontend debounce);
+  // the nullable column stays for future staff/system callers. Internal staff notes are never serialized.
+  const TICKET_CATEGORIES = ['GENERAL', 'PROJECT', 'BILLING', 'TECHNICAL', 'CARE_PLAN', 'OTHER'] as const;
+  // Extract + validate the client Idempotency-Key; 400 (returns null) if missing/malformed.
+  const idempotencyKey = (req: FastifyRequest, reply: FastifyReply): string | null => {
+    const raw = req.headers['idempotency-key'];
+    const key = Array.isArray(raw) ? raw[0] : raw;
+    if (!key || !/^[A-Za-z0-9_-]{8,200}$/.test(key)) {
+      reply.code(400).send({ ok: false, message: 'A valid Idempotency-Key header is required.' });
+      return null;
+    }
+    return key;
+  };
+  const ticketCtx = async (ctx: Ctx): Promise<TicketCtx> => {
+    const actor = await clientActorFor(ctx.session); // { id, name } snapshot, scoped to the caller
+    return { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, actorId: actor.id ?? ctx.session.sub, actorName: actor.name ?? null };
+  };
+
+  app.get('/portal/tickets', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'ticket:read', ctx.role))) return;
+    const tickets = await listTickets(prisma, await ticketCtx(ctx));
+    return reply.send({ ok: true, tickets });
+  });
+
+  app.post('/portal/tickets', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'ticket:create', ctx.role))) return;
+    const key = idempotencyKey(req, reply);
+    if (!key) return;
+    const body = z.object({
+      subject: z.string().trim().min(1).max(200),
+      category: z.enum(TICKET_CATEGORIES),
+      projectId: z.string().min(1).max(64).optional(),
+      body: z.string().trim().min(1).max(8000),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ ok: false });
+    const r = await createTicket(prisma, await ticketCtx(ctx), {
+      subject: cleanText(body.data.subject, 200),
+      category: body.data.category,
+      projectId: body.data.projectId ?? null,
+      body: cleanMultiline(body.data.body, 8000),
+      clientRequestId: key,
+    });
+    if (r.ok === 'project_not_found') return reply.code(404).send({ ok: false, message: 'Project not found.' });
+    if (r.ok === 'conflict') return reply.code(409).send({ ok: false, message: 'Idempotency-Key was already used with a different request.' });
+    return reply.code(r.ok === 'created' ? 201 : 200).send({ ok: true, idempotentReplay: r.ok === 'replay', ticket: r.ticket });
+  });
+
+  app.get('/portal/tickets/:id', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'ticket:read', ctx.role))) return;
+    const ticket = await getTicketDetail(prisma, await ticketCtx(ctx), (req.params as { id: string }).id);
+    if (!ticket) return reply.code(404).send({ ok: false, message: 'Not found' });
+    return reply.send({ ok: true, ticket });
+  });
+
+  app.post('/portal/tickets/:id/replies', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'ticket:reply', ctx.role))) return;
+    const key = idempotencyKey(req, reply);
+    if (!key) return;
+    const body = z.object({ body: z.string().trim().min(1).max(8000) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ ok: false });
+    const r = await replyToTicket(prisma, await ticketCtx(ctx), (req.params as { id: string }).id, {
+      body: cleanMultiline(body.data.body, 8000),
+      clientRequestId: key,
+    });
+    if (r.ok === 'ticket_not_found') return reply.code(404).send({ ok: false, message: 'Not found' });
+    if (r.ok === 'conflict') return reply.code(409).send({ ok: false, message: 'Idempotency-Key was already used with a different request.' });
+    return reply.code(r.ok === 'created' ? 201 : 200).send({ ok: true, idempotentReplay: r.ok === 'replay', message: r.message });
   });
 
   // ── Notifications (client) ──

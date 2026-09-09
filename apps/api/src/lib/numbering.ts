@@ -12,11 +12,14 @@ export async function nextDocumentNumber(
   tenantId: string,
   kind: string,
   prefix: string,
+  pad = 4,
 ): Promise<string> {
   const row = await tx.documentCounter.upsert({
     where: { tenantId_kind: { tenantId, kind } },
     update: { value: { increment: 1 } },
     create: { tenantId, kind, value: 1 },
   });
-  return `${prefix}-${String(row.value).padStart(4, '0')}`; // PROP-0001; widens past 9999, still unique
+  // Existing callers keep the 4-digit house style (PROP-0001); tickets pass pad=6 (TKT-000001).
+  // Either way it widens past the pad width, still unique.
+  return `${prefix}-${String(row.value).padStart(pad, '0')}`;
 }

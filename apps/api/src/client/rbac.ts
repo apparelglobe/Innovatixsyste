@@ -16,6 +16,9 @@
  *   file:upload                ✓      ✓
  *   message:send               ✓      ✓
  *   approval:comment           ✓      ✓
+ *   ticket:create              ✓      ✓      (Slice 3 — open a support ticket)
+ *   ticket:read                ✓      ✓      (Slice 3 — read the org's tickets + history)
+ *   ticket:reply               ✓      ✓      (Slice 3 — reply on a ticket)
  *   approval:decide            ✓      –      (approve/reject deliverables, milestones, UAT, deploy)
  *   invoice:read               ✓      –      (P3.3: whole Billing surface — list/detail/PDF/Care Plan)
  *   invoice:pay                ✓      –
@@ -39,6 +42,9 @@ export type ClientAction =
   | 'file:upload'
   | 'message:send'
   | 'approval:comment'
+  | 'ticket:create'
+  | 'ticket:read'
+  | 'ticket:reply'
   | 'approval:decide'
   | 'invoice:read'
   | 'invoice:pay'
@@ -56,6 +62,12 @@ const READ_AND_PARTICIPATE: ClientAction[] = [
   'file:upload',
   'message:send',
   'approval:comment',
+  // Slice 3 — support tickets are relationship-level participation (like message:send): both OWNER and
+  // MEMBER may open, read, and reply to their org's tickets. NOT in SENSITIVE_CLIENT_ACTIONS (mirrors
+  // messages, not money). A future destructive action (e.g. ticket:close) would be OWNER-only + sensitive.
+  'ticket:create',
+  'ticket:read',
+  'ticket:reply',
 ];
 
 const OWNER_ONLY: ClientAction[] = [
