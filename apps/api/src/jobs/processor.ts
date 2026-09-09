@@ -125,18 +125,35 @@ async function handle(prisma: PrismaClient, job: SideEffectJob): Promise<void> {
       await generateRetainerInvoice(prisma, job);
       return;
     case 'TICKET_NOTIFY': {
-      // Slice 3 — durable staff email for a client-opened/replied support ticket. The in-app inbox row is
-      // written best-effort at request time (notifyStaff, email:false); this job owns the retried email.
+      // Slice 3 (client→staff, `to_staff`) + Slice 4 (staff→client, `to_client`, one job per recipient).
+      // BACKWARD-COMPAT: `direction` is optional; absent ⇒ 'to_staff' ⇒ the exact original Slice 3 behavior,
+      // so any old/pending client→staff job keeps working unchanged.
       const ticketId = String(p.ticketId ?? '');
       const ticket = ticketId ? await prisma.ticket.findUnique({ where: { id: ticketId } }) : null;
       if (!ticket) return; // ticket vanished (e.g. cleaned up) → nothing to send
+      const base = config.PORTAL_WEB_ORIGIN[0] || 'http://localhost:3001';
+      const direction = p.direction === 'to_client' ? 'to_client' : 'to_staff';
+      if (direction === 'to_client') {
+        // Per-recipient client email. Re-check the recipient still exists AND is active at send time — a
+        // deactivated/removed user is a safe skip (no email), and each recipient job retries independently.
+        const clientUserId = String(p.clientUserId ?? '');
+        const user = clientUserId ? await prisma.clientUser.findFirst({ where: { id: clientUserId, tenantId: job.tenantId, active: true }, select: { email: true } }) : null;
+        if (!user) return; // removed/deactivated since enqueue → safe skip
+        await sendTransactionalEmail(prisma, {
+          tenantId: job.tenantId,
+          type: 'NOTIFICATION',
+          to: user.email,
+          built: notificationEmail(`Reply on your support ticket ${ticket.number}`, ticket.subject, `${base}/tickets/${ticket.id}`),
+        });
+        return;
+      }
+      // to_staff (unchanged): durable internal email for a client-opened/replied ticket.
       const verb = p.event === 'replied' ? 'reply' : 'ticket';
-      const url = (config.PORTAL_WEB_ORIGIN[0] || 'http://localhost:3001') + '/admin';
       await sendTransactionalEmail(prisma, {
         tenantId: job.tenantId,
         type: 'NOTIFICATION',
         to: config.EMAIL_INTERNAL_TO,
-        built: notificationEmail(`Support ${verb}: ${ticket.number}`, ticket.subject, url),
+        built: notificationEmail(`Support ${verb}: ${ticket.number}`, ticket.subject, `${base}/admin`),
       });
       return;
     }

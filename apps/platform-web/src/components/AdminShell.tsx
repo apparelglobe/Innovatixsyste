@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FolderKanban, UserPlus, FileText, Bell, Settings, LogOut } from 'lucide-react';
+import { FolderKanban, UserPlus, FileText, LifeBuoy, Bell, Settings, LogOut } from 'lucide-react';
 import { api } from '@/lib/portal-api';
 import { NotificationBell } from './NotificationBell';
 import { Logo } from './Logo';
@@ -10,6 +10,7 @@ const NAV = [
   { key: 'projects', icon: <FolderKanban size={16} />, label: 'Projects', href: '/admin' },
   { key: 'leads', icon: <UserPlus size={16} />, label: 'Leads', href: '/admin/leads' },
   { key: 'proposals', icon: <FileText size={16} />, label: 'Proposals', href: '/admin/proposals' },
+  { key: 'tickets', icon: <LifeBuoy size={16} />, label: 'Support', href: '/admin/tickets' }, // Slice 4
   { key: 'notifications', icon: <Bell size={16} />, label: 'Notifications', href: '/admin/notifications' },
   { key: 'settings', icon: <Settings size={16} />, label: 'Settings', href: '/admin/settings' },
 ];

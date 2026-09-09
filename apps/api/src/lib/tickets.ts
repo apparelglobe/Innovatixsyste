@@ -48,8 +48,9 @@ const hashCreate = (i: { subject: string; category: string; projectId: string | 
 const hashReply = (i: { body: string }) => sha256({ body: i.body });
 
 /** True only for a P2002 whose target mentions `clientRequestId` — i.e. the create/reply idempotency
- *  constraint, NEVER the SideEffectJob idempotencyKey (which must surface as an invariant failure). */
-function isRequestIdConflict(err: unknown): boolean {
+ *  constraint, NEVER the SideEffectJob idempotencyKey (which must surface as an invariant failure).
+ *  Exported (Slice 4) so the staff ticket service reuses the exact same P2002-target check. */
+export function isRequestIdConflict(err: unknown): boolean {
   const e = err as { code?: string; meta?: { target?: unknown } };
   if (e.code !== 'P2002') return false;
   const t = e.meta?.target;

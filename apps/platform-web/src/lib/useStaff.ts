@@ -24,9 +24,9 @@ export function useStaff() {
 export function staffCan(role: string | undefined, action: string): boolean {
   if (!role) return false;
   const M: Record<string, string[]> = {
-    ADMIN: ['project:write', 'milestone:write', 'report:publish', 'file:write', 'message:reply', 'approval:create', 'team:assign', 'invoice:write', 'lead:convert', 'proposal:write'],
-    DELIVERY_LEAD: ['project:write', 'milestone:write', 'report:publish', 'file:write', 'message:reply', 'approval:create', 'team:assign', 'invoice:write', 'lead:convert', 'proposal:write'],
-    ENGINEER: ['milestone:write', 'report:publish', 'file:write', 'message:reply'],
+    ADMIN: ['project:write', 'milestone:write', 'report:publish', 'file:write', 'message:reply', 'approval:create', 'team:assign', 'invoice:write', 'lead:convert', 'proposal:write', 'ticket:reply', 'ticket:note', 'ticket:status'],
+    DELIVERY_LEAD: ['project:write', 'milestone:write', 'report:publish', 'file:write', 'message:reply', 'approval:create', 'team:assign', 'invoice:write', 'lead:convert', 'proposal:write', 'ticket:reply', 'ticket:note', 'ticket:status'],
+    ENGINEER: ['milestone:write', 'report:publish', 'file:write', 'message:reply', 'ticket:reply', 'ticket:note', 'ticket:status'],
     VIEWER: [],
   };
   return (M[role] ?? []).includes(action);

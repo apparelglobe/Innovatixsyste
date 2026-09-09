@@ -23,6 +23,7 @@ import { registerInvitationRoutes } from './routes/invitations';
 import { registerDevOutboxRoutes } from './routes/dev-outbox';
 import { registerPortalRoutes } from './portal/routes';
 import { registerAdminRoutes } from './admin/routes';
+import { registerAdminTicketRoutes } from './admin/tickets';
 import { registerCatalogRoutes } from './admin/catalog';
 import { registerProposalAdminRoutes } from './admin/proposals';
 import { registerProposalRoutes } from './routes/proposals';
@@ -144,6 +145,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       await registerDevOutboxRoutes(v1);
       await registerPortalRoutes(v1);
       await registerAdminRoutes(v1);
+      await registerAdminTicketRoutes(v1);
       await registerCatalogRoutes(v1);
       await registerProposalAdminRoutes(v1);
       await registerProposalRoutes(v1);
