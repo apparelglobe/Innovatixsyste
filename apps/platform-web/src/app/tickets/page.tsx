@@ -8,10 +8,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, LifeBuoy, Plus, ArrowUpRight } from 'lucide-react';
 import { PortalShell } from '@/components/PortalShell';
-import { apiJson, api } from '@/lib/portal-api';
+import { apiJson, api, apiUpload } from '@/lib/portal-api';
 import { Timestamp } from '@/components/Timestamp';
 import { useRelationship } from '@/lib/useRelationship';
 import { TONE_CLASS } from '@/lib/proposal-stage';
+import { AttachmentPicker } from '@/components/TicketAttachments';
 import { TICKET_STATUS_LABEL, TICKET_STATUS_TONE, TICKET_CATEGORY_LABEL, TICKET_CATEGORIES, type TicketListItem } from '@/lib/tickets-ui';
 
 export default function TicketsPage() {
@@ -78,6 +79,7 @@ function NewTicket({ projects, onCancel, onCreated }: { projects: { id: string; 
   const [category, setCategory] = useState<(typeof TICKET_CATEGORIES)[number]>('GENERAL');
   const [projectId, setProjectId] = useState('');
   const [body, setBody] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // One Idempotency-Key per compose session — reused across retries so a double-submit can never
@@ -87,13 +89,24 @@ function NewTicket({ projects, onCancel, onCreated }: { projects: { id: string; 
   async function submit() {
     if (!subject.trim() || !body.trim()) { setErr('Please add a subject and a message.'); return; }
     setErr(null); setSubmitting(true);
-    const res = await api('/portal/tickets', {
-      method: 'POST',
-      headers: { 'idempotency-key': idempotencyKey },
-      body: JSON.stringify({ subject: subject.trim(), category, projectId: projectId || undefined, body: body.trim() }),
-    });
+    // Multipart (raw fetch, no content-type) when a file is attached; plain JSON otherwise.
+    const res = file
+      ? await apiUpload('/portal/tickets', (() => {
+          const fd = new FormData();
+          fd.append('subject', subject.trim()); fd.append('category', category); fd.append('body', body.trim());
+          if (projectId) fd.append('projectId', projectId);
+          fd.append('file', file);
+          return fd;
+        })(), { 'idempotency-key': idempotencyKey })
+      : await api('/portal/tickets', {
+          method: 'POST',
+          headers: { 'idempotency-key': idempotencyKey },
+          body: JSON.stringify({ subject: subject.trim(), category, projectId: projectId || undefined, body: body.trim() }),
+        });
     setSubmitting(false);
     if (res.status === 201 || res.status === 200) { await onCreated(); return; }
+    if (res.status === 413) { setErr('That file is too large (max 25 MB).'); return; }
+    if (res.status === 400) { setErr('That file type isn’t supported, or the form is incomplete.'); return; }
     setErr(res.status === 409 ? 'This request was already submitted.' : 'Could not open the ticket. Please try again.');
   }
 
@@ -126,6 +139,10 @@ function NewTicket({ projects, onCancel, onCreated }: { projects: { id: string; 
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={8000}
             className="w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" placeholder="Describe your request" />
         </label>
+        <div className="text-sm sm:col-span-2">
+          <span className="mb-1 block text-neutral-400">Attachment <span className="text-neutral-600">(optional — one file, max 25 MB)</span></span>
+          <AttachmentPicker file={file} onPick={setFile} />
+        </div>
       </div>
       {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
       <div className="mt-3 flex justify-end gap-2">

@@ -32,5 +32,7 @@ export const TICKET_CATEGORY_LABEL: Record<TicketCategory, string> = {
 export const TICKET_CATEGORIES: TicketCategory[] = ['GENERAL', 'PROJECT', 'BILLING', 'TECHNICAL', 'CARE_PLAN', 'OTHER'];
 
 export type TicketListItem = { id: string; number: string; subject: string; category: TicketCategory; status: TicketStatus; projectId: string | null; lastMessageAt: string; createdAt: string };
-export type TicketMessage = { id: string; authorType: 'CLIENT' | 'TEAM'; authorName: string | null; body: string; createdAt: string };
+// Slice 5 — client attachment shape (NO uploader id; `downloadable` true only when scan-clean/AVAILABLE).
+export type TicketAttachment = { id: string; filename: string; sizeBytes: number | null; mimeType: string | null; downloadable: boolean };
+export type TicketMessage = { id: string; authorType: 'CLIENT' | 'TEAM'; authorName: string | null; body: string; createdAt: string; attachments: TicketAttachment[] };
 export type TicketDetail = TicketListItem & { closedAt: string | null; messages: TicketMessage[] };

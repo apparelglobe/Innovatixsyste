@@ -22,30 +22,41 @@ import { notifyStaff } from '../notifications/service';
 
 export type TicketCtx = { tenantId: string; clientOrgId: string; actorId: string; actorName: string | null };
 
-export type CreateTicketInput = { subject: string; category: TicketCategory; projectId: string | null; body: string; clientRequestId: string };
-export type ReplyInput = { body: string; clientRequestId: string };
+// Slice 5 — a validated, hashed file to attach to the created message. Metadata ONLY (the bytes never reach
+// this DB layer). fileHash is folded into requestHash so a same-key/different-file retry surfaces as 409.
+export type AttachmentInput = { filename: string; mimeType: string; sizeBytes: number; fileHash: string };
+/** The attachment row created in-tx — returned so the route can store + scan its bytes post-commit. */
+export type CreatedAttachment = { id: string; filename: string };
+
+export type CreateTicketInput = { subject: string; category: TicketCategory; projectId: string | null; body: string; clientRequestId: string; attachment?: AttachmentInput | null };
+export type ReplyInput = { body: string; clientRequestId: string; attachment?: AttachmentInput | null };
 
 export type TicketDTO = { id: string; number: string; subject: string; category: TicketCategory; status: TicketStatus; projectId: string | null; lastMessageAt: Date; createdAt: Date; closedAt: Date | null };
+export type TicketAttachmentDTO = { id: string; filename: string; sizeBytes: number | null; mimeType: string | null; downloadable: boolean };
 export type TicketMessageDTO = { id: string; authorType: MessageAuthorType; authorName: string | null; body: string; createdAt: Date };
+export type TicketMessageDetailDTO = TicketMessageDTO & { attachments: TicketAttachmentDTO[] };
 export type TicketListItem = { id: string; number: string; subject: string; category: TicketCategory; status: TicketStatus; projectId: string | null; lastMessageAt: Date; createdAt: Date };
 
 export type CreateResult =
-  | { ok: 'created'; ticket: TicketDTO }
+  | { ok: 'created'; ticket: TicketDTO; attachment: CreatedAttachment | null }
   | { ok: 'replay'; ticket: TicketDTO }
   | { ok: 'conflict' }
   | { ok: 'project_not_found' };
 
 export type ReplyResult =
-  | { ok: 'created'; message: TicketMessageDTO }
+  | { ok: 'created'; message: TicketMessageDTO; attachment: CreatedAttachment | null }
   | { ok: 'replay'; message: TicketMessageDTO }
   | { ok: 'conflict' }
   | { ok: 'ticket_not_found' };
 
 const sha256 = (obj: unknown) => createHash('sha256').update(JSON.stringify(obj)).digest('hex');
+// File identity folded into the payload hash (Slice 5): a retry with the SAME Idempotency-Key but a DIFFERENT
+// file (or a file added/removed) changes the hash → 409, never a silent replay of the original attachment.
+const filePart = (a?: AttachmentInput | null) => (a ? { filename: a.filename, sizeBytes: a.sizeBytes, fileHash: a.fileHash } : null);
 // Canonical payload hashes — fixed key order so identical retries match and any content change differs.
-const hashCreate = (i: { subject: string; category: string; projectId: string | null; body: string }) =>
-  sha256({ subject: i.subject, category: i.category, projectId: i.projectId ?? null, body: i.body });
-const hashReply = (i: { body: string }) => sha256({ body: i.body });
+const hashCreate = (i: { subject: string; category: string; projectId: string | null; body: string; attachment?: AttachmentInput | null }) =>
+  sha256({ subject: i.subject, category: i.category, projectId: i.projectId ?? null, body: i.body, file: filePart(i.attachment) });
+const hashReply = (i: { body: string; attachment?: AttachmentInput | null }) => sha256({ body: i.body, file: filePart(i.attachment) });
 
 /** True only for a P2002 whose target mentions `clientRequestId` — i.e. the create/reply idempotency
  *  constraint, NEVER the SideEffectJob idempotencyKey (which must surface as an invariant failure).
@@ -78,7 +89,7 @@ export async function createTicket(prisma: PrismaClient, ctx: TicketCtx, input: 
   }
 
   try {
-    const ticket = await prisma.$transaction(async (tx) => {
+    const { ticket, attachment } = await prisma.$transaction(async (tx) => {
       const number = await nextDocumentNumber(tx, ctx.tenantId, 'TICKET', 'TKT', 6);
       const created = await tx.ticket.create({
         data: {
@@ -92,16 +103,21 @@ export async function createTicket(prisma: PrismaClient, ctx: TicketCtx, input: 
         // First message: NO clientRequestId — the ticket's key covers the whole create atomically.
         data: { tenantId: ctx.tenantId, ticketId: created.id, authorType: 'CLIENT', authorId: ctx.actorId, authorName: ctx.actorName, body: input.body },
       });
+      // Slice 5: attachment row bound to THIS message. Ownership (tenant/org/ticket) is copied from the
+      // trusted ticket, NEVER from request input. Fail-closed PENDING_UPLOAD; the route stores + scans next.
+      const att = input.attachment
+        ? await tx.ticketAttachment.create({ data: { tenantId: ctx.tenantId, clientOrgId: ctx.clientOrgId, ticketId: created.id, messageId: msg.id, filename: input.attachment.filename, mimeType: input.attachment.mimeType, sizeBytes: input.attachment.sizeBytes } })
+        : null;
       // Durable staff email — plain create; the deterministic key is a DB backstop, an unexpected
       // collision aborts this whole tx (invariant failure), it is never swallowed.
       await tx.sideEffectJob.create({
         data: { tenantId: ctx.tenantId, type: 'TICKET_NOTIFY', payload: { ticketId: created.id, messageId: msg.id, event: 'opened' }, idempotencyKey: `${msg.id}:TICKET_NOTIFY` },
       });
-      return created;
+      return { ticket: created, attachment: att };
     });
     // In-app inbox row for staff (best-effort, post-commit, email:false — the durable job owns the email).
     await notifyStaff(prisma, ctx.tenantId, { type: 'TICKET_MESSAGE', title: `New support ticket ${ticket.number}`, body: ticket.subject, linkPath: '/admin', email: false }).catch(() => undefined);
-    return { ok: 'created', ticket: toTicketDTO(ticket) };
+    return { ok: 'created', ticket: toTicketDTO(ticket), attachment: attachment ? { id: attachment.id, filename: attachment.filename } : null };
   } catch (err) {
     if (isRequestIdConflict(err)) {
       const existing = await prisma.ticket.findFirst({ where: { tenantId: ctx.tenantId, clientOrgId: ctx.clientOrgId, clientRequestId: key } });
@@ -121,10 +137,13 @@ export async function replyToTicket(prisma: PrismaClient, ctx: TicketCtx, ticket
   if (pre) return pre.requestHash === requestHash ? { ok: 'replay', message: toMessageDTO(pre) } : { ok: 'conflict' };
 
   try {
-    const message = await prisma.$transaction(async (tx) => {
+    const { message, attachment } = await prisma.$transaction(async (tx) => {
       const msg = await tx.ticketMessage.create({
         data: { tenantId: ctx.tenantId, ticketId, authorType: 'CLIENT', authorId: ctx.actorId, authorName: ctx.actorName, body: input.body, clientRequestId: key, requestHash },
       });
+      const att = input.attachment
+        ? await tx.ticketAttachment.create({ data: { tenantId: ctx.tenantId, clientOrgId: ctx.clientOrgId, ticketId, messageId: msg.id, filename: input.attachment.filename, mimeType: input.attachment.mimeType, sizeBytes: input.attachment.sizeBytes } })
+        : null;
       // A client reply on a WAITING_ON_CLIENT ticket flips it back to OPEN — guarded updateMany (not
       // read-modify-write), so it never races a concurrent staff status change.
       await tx.ticket.updateMany({ where: { id: ticketId, status: 'WAITING_ON_CLIENT' }, data: { status: 'OPEN' } });
@@ -132,10 +151,10 @@ export async function replyToTicket(prisma: PrismaClient, ctx: TicketCtx, ticket
       await tx.sideEffectJob.create({
         data: { tenantId: ctx.tenantId, type: 'TICKET_NOTIFY', payload: { ticketId, messageId: msg.id, event: 'replied' }, idempotencyKey: `${msg.id}:TICKET_NOTIFY` },
       });
-      return msg;
+      return { message: msg, attachment: att };
     });
     await notifyStaff(prisma, ctx.tenantId, { type: 'TICKET_MESSAGE', title: `New reply on ${ticket.number}`, body: ticket.subject, linkPath: '/admin', email: false }).catch(() => undefined);
-    return { ok: 'created', message: toMessageDTO(message) };
+    return { ok: 'created', message: toMessageDTO(message), attachment: attachment ? { id: attachment.id, filename: attachment.filename } : null };
   } catch (err) {
     if (isRequestIdConflict(err)) {
       const existing = await prisma.ticketMessage.findFirst({ where: { ticketId, clientRequestId: key } });
@@ -153,14 +172,28 @@ export async function listTickets(prisma: PrismaClient, ctx: TicketCtx): Promise
   });
 }
 
-export async function getTicketDetail(prisma: PrismaClient, ctx: TicketCtx, ticketId: string): Promise<(TicketDTO & { messages: TicketMessageDTO[] }) | null> {
+export async function getTicketDetail(prisma: PrismaClient, ctx: TicketCtx, ticketId: string): Promise<(TicketDTO & { messages: TicketMessageDetailDTO[] }) | null> {
   const ticket = await prisma.ticket.findFirst({
     where: { id: ticketId, tenantId: ctx.tenantId, clientOrgId: ctx.clientOrgId }, // org-scoped → foreign/missing = null (404)
     include: {
-      // Client-visible thread ONLY: internal staff notes are never included in the client payload.
-      messages: { where: { internal: false }, orderBy: { createdAt: 'asc' }, select: { id: true, authorType: true, authorName: true, body: true, createdAt: true } },
+      // Client-visible thread ONLY: internal staff notes are never included in the client payload — and
+      // because attachments are nested UNDER messages, an internal-note attachment is never serialized here.
+      messages: {
+        where: { internal: false }, orderBy: { createdAt: 'asc' },
+        select: {
+          id: true, authorType: true, authorName: true, body: true, createdAt: true,
+          attachments: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, filename: true, sizeBytes: true, mimeType: true, state: true } },
+        },
+      },
     },
   });
   if (!ticket) return null;
-  return { ...toTicketDTO(ticket), messages: ticket.messages.map(toMessageDTO) };
+  return {
+    ...toTicketDTO(ticket),
+    messages: ticket.messages.map((m) => ({
+      ...toMessageDTO(m),
+      // Client attachment DTO: NO uploader id; `downloadable` true ONLY when scan-clean (AVAILABLE).
+      attachments: m.attachments.map((a) => ({ id: a.id, filename: a.filename, sizeBytes: a.sizeBytes, mimeType: a.mimeType, downloadable: a.state === 'AVAILABLE' })),
+    })),
+  };
 }

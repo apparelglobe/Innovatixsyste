@@ -5,7 +5,7 @@
  */
 import { prisma, assertDbReachable } from './db';
 import { processDueJobs } from './jobs/processor';
-import { processScanJobs } from './scanning/service';
+import { processScanJobs, processTicketAttachmentScanJobs } from './scanning/service';
 import { sweepDueCarePlans } from './billing/retainer';
 import { purgeExpiredRateLimits } from './lib/ratelimit';
 import { config } from './config';
@@ -41,6 +41,12 @@ async function loop() {
       if (scans.processed > 0) {
         // eslint-disable-next-line no-console
         console.log(`[worker] scans ${JSON.stringify(scans)}`);
+      }
+      // Slice 5 — drain ticket-attachment scans (separate durable table, same state machine).
+      const attachmentScans = await processTicketAttachmentScanJobs(prisma, new Date());
+      if (attachmentScans.processed > 0) {
+        // eslint-disable-next-line no-console
+        console.log(`[worker] attachment-scans ${JSON.stringify(attachmentScans)}`);
       }
       // opportunistic retention purge every ~5 min
       if (++ticks % 150 === 0) await purgeExpiredRateLimits(prisma);

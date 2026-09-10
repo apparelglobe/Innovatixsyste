@@ -36,6 +36,14 @@ export function storageKey(tenantId: string, projectId: string, fileId: string, 
   return `${tenantId}/${projectId}/${fileId}-${safe}`;
 }
 
+/** Slice 5 — deterministic, fully-scoped key for a ticket attachment. Project-less + version-less: keyed by
+ *  tenant/org/ticket/attachment (the unique attachment id prevents collisions). Reuses objectKey()'s
+ *  safeFilename sanitizer. Never derived from client input beyond the sanitized filename. */
+export function attachmentKey(args: { tenantId: string; clientOrgId: string; ticketId: string; attachmentId: string; filename: string }): string {
+  const safe = args.filename.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.\.+/g, '.').slice(0, 100) || 'file';
+  return `tenant/${args.tenantId}/org/${args.clientOrgId}/ticket/${args.ticketId}/attachment/${args.attachmentId}/${safe}`;
+}
+
 function allowedMime(): Set<string> {
   return config.STORAGE_ALLOW_ARCHIVES ? new Set([...DEFAULT_ALLOWED_MIME, ...ARCHIVE_MIME]) : DEFAULT_ALLOWED_MIME;
 }

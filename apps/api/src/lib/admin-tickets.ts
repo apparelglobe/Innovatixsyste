@@ -18,7 +18,7 @@
 import { createHash } from 'node:crypto';
 import type { PrismaClient, StaffRole, TicketCategory, TicketStatus } from '@prisma/client';
 import { can } from '../staff/rbac';
-import { isRequestIdConflict } from './tickets';
+import { isRequestIdConflict, type AttachmentInput, type CreatedAttachment } from './tickets';
 
 export type StaffTicketCtx = { tenantId: string; staffId: string; staffName: string | null; role: StaffRole };
 
@@ -36,15 +36,21 @@ const TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
 export const isAllowedTransition = (from: TicketStatus, to: TicketStatus): boolean => TRANSITIONS[from]?.includes(to) ?? false;
 
 const sha256 = (obj: unknown) => createHash('sha256').update(JSON.stringify(obj)).digest('hex');
+// File identity folded into the namespaced staff hash (Slice 5): same key + different file → 409, not replay.
+const filePart = (a?: AttachmentInput | null) => (a ? { filename: a.filename, sizeBytes: a.sizeBytes, fileHash: a.fileHash } : null);
 class NotRepliableError extends Error {}
 
 // ── DTOs (staff — surface internal + authorId) ──────────────────────────────
-export type StaffMessageDTO = { id: string; authorType: 'CLIENT' | 'TEAM'; authorId: string | null; authorName: string | null; internal: boolean; body: string; createdAt: Date };
+export type StaffAttachmentDTO = { id: string; filename: string; sizeBytes: number | null; mimeType: string | null; state: string; downloadable: boolean };
+export type StaffMessageDTO = { id: string; authorType: 'CLIENT' | 'TEAM'; authorId: string | null; authorName: string | null; internal: boolean; body: string; createdAt: Date; attachments: StaffAttachmentDTO[] };
 export type StaffTicketDTO = { id: string; number: string; subject: string; category: TicketCategory; status: TicketStatus; clientOrgId: string; projectId: string | null; createdByClientUserId: string; createdByName: string | null; lastMessageAt: Date; createdAt: Date; closedAt: Date | null };
 export type StaffTicketListItem = { id: string; number: string; subject: string; category: TicketCategory; status: TicketStatus; clientOrgId: string; clientOrgName: string; projectId: string | null; lastMessageAt: Date; createdAt: Date };
 
-const toMsg = (m: { id: string; authorType: 'CLIENT' | 'TEAM'; authorId: string | null; authorName: string | null; internal: boolean; body: string; createdAt: Date }): StaffMessageDTO =>
-  ({ id: m.id, authorType: m.authorType, authorId: m.authorId, authorName: m.authorName, internal: m.internal, body: m.body, createdAt: m.createdAt });
+type AttachmentRow = { id: string; filename: string; sizeBytes: number | null; mimeType: string | null; state: string };
+const toStaffAttachment = (a: AttachmentRow): StaffAttachmentDTO =>
+  ({ id: a.id, filename: a.filename, sizeBytes: a.sizeBytes, mimeType: a.mimeType, state: a.state, downloadable: a.state === 'AVAILABLE' });
+const toMsg = (m: { id: string; authorType: 'CLIENT' | 'TEAM'; authorId: string | null; authorName: string | null; internal: boolean; body: string; createdAt: Date; attachments?: AttachmentRow[] }): StaffMessageDTO =>
+  ({ id: m.id, authorType: m.authorType, authorId: m.authorId, authorName: m.authorName, internal: m.internal, body: m.body, createdAt: m.createdAt, attachments: (m.attachments ?? []).map(toStaffAttachment) });
 const toTicket = (t: { id: string; number: string; subject: string; category: TicketCategory; status: TicketStatus; clientOrgId: string; projectId: string | null; createdByClientUserId: string; createdByName: string | null; lastMessageAt: Date; createdAt: Date; closedAt: Date | null }): StaffTicketDTO =>
   ({ id: t.id, number: t.number, subject: t.subject, category: t.category, status: t.status, clientOrgId: t.clientOrgId, projectId: t.projectId, createdByClientUserId: t.createdByClientUserId, createdByName: t.createdByName, lastMessageAt: t.lastMessageAt, createdAt: t.createdAt, closedAt: t.closedAt });
 
@@ -96,19 +102,29 @@ export async function getStaffTicketDetail(prisma: PrismaClient, ctx: StaffTicke
     include: {
       clientOrg: { select: { id: true, name: true } },
       project: { select: { id: true, name: true } },
-      messages: { where: canSeeInternal ? {} : { internal: false }, orderBy: { createdAt: 'asc' }, select: { id: true, authorType: true, authorId: true, authorName: true, internal: true, body: true, createdAt: true } },
+      // Attachments nest UNDER messages, so an internal-note attachment is filtered out for VIEWER exactly
+      // when its parent internal note is (canSeeInternal gate) — one visibility rule, no second flag.
+      messages: {
+        where: canSeeInternal ? {} : { internal: false }, orderBy: { createdAt: 'asc' },
+        select: {
+          id: true, authorType: true, authorId: true, authorName: true, internal: true, body: true, createdAt: true,
+          attachments: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, filename: true, sizeBytes: true, mimeType: true, state: true } },
+        },
+      },
     },
   });
   if (!ticket) return null;
   return { ...toTicket(ticket), clientOrg: ticket.clientOrg, project: ticket.project, messages: ticket.messages.map(toMsg) };
 }
 
-export type StaffWriteInput = { body: string; opaqueKey: string };
+export type StaffWriteInput = { body: string; opaqueKey: string; attachment?: AttachmentInput | null };
 export type StaffReplyResult =
-  | { ok: 'created' | 'replay'; message: StaffMessageDTO }
+  | { ok: 'created'; message: StaffMessageDTO; attachment: CreatedAttachment | null }
+  | { ok: 'replay'; message: StaffMessageDTO }
   | { ok: 'conflict' } | { ok: 'not_repliable' } | { ok: 'ticket_not_found' };
 export type StaffNoteResult =
-  | { ok: 'created' | 'replay'; message: StaffMessageDTO }
+  | { ok: 'created'; message: StaffMessageDTO; attachment: CreatedAttachment | null }
+  | { ok: 'replay'; message: StaffMessageDTO }
   | { ok: 'conflict' } | { ok: 'ticket_not_found' };
 
 /** Client-visible staff reply — one tx: guarded non-terminal flip → WAITING_ON_CLIENT + lastMessageAt bump,
@@ -117,26 +133,31 @@ export async function staffReply(prisma: PrismaClient, ctx: StaffTicketCtx, tick
   const ticket = await prisma.ticket.findFirst({ where: { id: ticketId, tenantId: ctx.tenantId } });
   if (!ticket) return { ok: 'ticket_not_found' };
   const clientRequestId = `staff-reply:${input.opaqueKey}`;
-  const requestHash = sha256({ kind: 'staff_reply', body: input.body });
+  const requestHash = sha256({ kind: 'staff_reply', body: input.body, file: filePart(input.attachment) });
 
   const pre = await prisma.ticketMessage.findFirst({ where: { ticketId, clientRequestId } });
   if (pre) return pre.requestHash === requestHash ? { ok: 'replay', message: toMsg(pre) } : { ok: 'conflict' };
 
   try {
-    const msg = await prisma.$transaction(async (tx) => {
+    const { msg, att } = await prisma.$transaction(async (tx) => {
       // The guarded flip IS the terminal-status gate: 0 rows ⇒ RESOLVED/CLOSED ⇒ abort ⇒ 409 not_repliable.
       const flip = await tx.ticket.updateMany({ where: { id: ticketId, tenantId: ctx.tenantId, status: { in: NON_TERMINAL } }, data: { status: 'WAITING_ON_CLIENT', lastMessageAt: new Date() } });
       if (flip.count === 0) throw new NotRepliableError();
       const created = await tx.ticketMessage.create({ data: { tenantId: ctx.tenantId, ticketId, authorType: 'TEAM', authorId: ctx.staffId, authorName: ctx.staffName, internal: false, body: input.body, clientRequestId, requestHash } });
+      // Slice 5: client-visible attachment on this reply. Ownership from the trusted ticket, not body input.
+      const attachment = input.attachment
+        ? await tx.ticketAttachment.create({ data: { tenantId: ctx.tenantId, clientOrgId: ticket.clientOrgId, ticketId, messageId: created.id, filename: input.attachment.filename, mimeType: input.attachment.mimeType, sizeBytes: input.attachment.sizeBytes } })
+        : null;
       // Active client recipients ONLY (never deactivated/removed). One job per recipient → independent retry.
+      // The attachment rides THIS message + THIS notification — no second email/job just for the file.
       const recipients = await tx.clientUser.findMany({ where: { tenantId: ctx.tenantId, clientOrgId: ticket.clientOrgId, active: true }, select: { id: true } });
       if (recipients.length) {
         await tx.notification.createMany({ data: recipients.map((u) => ({ tenantId: ctx.tenantId, recipientType: 'CLIENT' as const, recipientId: u.id, type: 'TICKET_MESSAGE' as const, title: `New reply on ${ticket.number}`, body: ticket.subject, linkPath: `/tickets/${ticketId}` })) });
         await tx.sideEffectJob.createMany({ data: recipients.map((u) => ({ tenantId: ctx.tenantId, type: 'TICKET_NOTIFY' as const, payload: { ticketId, messageId: created.id, direction: 'to_client', clientUserId: u.id }, idempotencyKey: `ticket-client-notify:${created.id}:${u.id}` })) });
       }
-      return created;
+      return { msg: created, att: attachment };
     });
-    return { ok: 'created', message: toMsg(msg) };
+    return { ok: 'created', message: toMsg(msg), attachment: att ? { id: att.id, filename: att.filename } : null };
   } catch (err) {
     if (err instanceof NotRepliableError) return { ok: 'not_repliable' };
     if (isRequestIdConflict(err)) {
@@ -149,17 +170,25 @@ export async function staffReply(prisma: PrismaClient, ctx: StaffTicketCtx, tick
 
 /** Internal staff note — TEAM internal=true, allowed on ANY status; no lastMessageAt bump, zero client side effect. */
 export async function addInternalNote(prisma: PrismaClient, ctx: StaffTicketCtx, ticketId: string, input: StaffWriteInput): Promise<StaffNoteResult> {
-  const ticket = await prisma.ticket.findFirst({ where: { id: ticketId, tenantId: ctx.tenantId }, select: { id: true } });
+  const ticket = await prisma.ticket.findFirst({ where: { id: ticketId, tenantId: ctx.tenantId }, select: { id: true, clientOrgId: true } });
   if (!ticket) return { ok: 'ticket_not_found' };
   const clientRequestId = `staff-note:${input.opaqueKey}`;
-  const requestHash = sha256({ kind: 'staff_note', body: input.body });
+  const requestHash = sha256({ kind: 'staff_note', body: input.body, file: filePart(input.attachment) });
 
   const pre = await prisma.ticketMessage.findFirst({ where: { ticketId, clientRequestId } });
   if (pre) return pre.requestHash === requestHash ? { ok: 'replay', message: toMsg(pre) } : { ok: 'conflict' };
 
   try {
-    const msg = await prisma.ticketMessage.create({ data: { tenantId: ctx.tenantId, ticketId, authorType: 'TEAM', authorId: ctx.staffId, authorName: ctx.staffName, internal: true, body: input.body, clientRequestId, requestHash } });
-    return { ok: 'created', message: toMsg(msg) };
+    // internal=true → the attachment is a STAFF-INTERNAL file (inherits internal visibility from the note).
+    // Zero client Notification/job/email (unchanged). Atomic message+attachment.
+    const { msg, att } = await prisma.$transaction(async (tx) => {
+      const created = await tx.ticketMessage.create({ data: { tenantId: ctx.tenantId, ticketId, authorType: 'TEAM', authorId: ctx.staffId, authorName: ctx.staffName, internal: true, body: input.body, clientRequestId, requestHash } });
+      const attachment = input.attachment
+        ? await tx.ticketAttachment.create({ data: { tenantId: ctx.tenantId, clientOrgId: ticket.clientOrgId, ticketId, messageId: created.id, filename: input.attachment.filename, mimeType: input.attachment.mimeType, sizeBytes: input.attachment.sizeBytes } })
+        : null;
+      return { msg: created, att: attachment };
+    });
+    return { ok: 'created', message: toMsg(msg), attachment: att ? { id: att.id, filename: att.filename } : null };
   } catch (err) {
     if (isRequestIdConflict(err)) {
       const existing = await prisma.ticketMessage.findFirst({ where: { ticketId, clientRequestId } });

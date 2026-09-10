@@ -11,12 +11,14 @@ import { useParams } from 'next/navigation';
 import { Loader2, ArrowLeft, LifeBuoy, Lock } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { useStaff, staffCan } from '@/lib/useStaff';
-import { api, apiJson } from '@/lib/portal-api';
+import { api, apiJson, apiUpload, API_BASE } from '@/lib/portal-api';
 import { Timestamp } from '@/components/Timestamp';
 import { TONE_CLASS } from '@/lib/proposal-stage';
+import { TicketAttachmentList, AttachmentPicker } from '@/components/TicketAttachments';
 import { TICKET_STATUS_LABEL, TICKET_STATUS_TONE, TICKET_CATEGORY_LABEL, type TicketStatus, type TicketCategory } from '@/lib/tickets-ui';
 
-type Msg = { id: string; authorType: 'CLIENT' | 'TEAM'; authorId: string | null; authorName: string | null; internal: boolean; body: string; createdAt: string };
+type Att = { id: string; filename: string; sizeBytes: number | null; mimeType: string | null; state: string; downloadable: boolean };
+type Msg = { id: string; authorType: 'CLIENT' | 'TEAM'; authorId: string | null; authorName: string | null; internal: boolean; body: string; createdAt: string; attachments: Att[] };
 type Detail = { id: string; number: string; subject: string; category: TicketCategory; status: TicketStatus; clientOrg: { id: string; name: string }; project: { id: string; name: string } | null; createdByName: string | null; createdAt: string; lastMessageAt: string; closedAt: string | null; messages: Msg[] };
 
 const TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
@@ -32,8 +34,8 @@ export default function AdminTicketDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { me, name } = useStaff();
   const [t, setT] = useState<Detail | null | undefined>(undefined);
-  const [reply, setReply] = useState(''); const [replyKey, setReplyKey] = useState(freshKey);
-  const [note, setNote] = useState(''); const [noteKey, setNoteKey] = useState(freshKey);
+  const [reply, setReply] = useState(''); const [replyKey, setReplyKey] = useState(freshKey); const [replyFile, setReplyFile] = useState<File | null>(null);
+  const [note, setNote] = useState(''); const [noteKey, setNoteKey] = useState(freshKey); const [noteFile, setNoteFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -46,18 +48,26 @@ export default function AdminTicketDetailPage() {
   async function sendReply() {
     if (!reply.trim()) return;
     setErr(null); setBusy('reply');
-    const r = await api(`/admin/tickets/${id}/replies`, { method: 'POST', headers: { 'idempotency-key': replyKey }, body: JSON.stringify({ body: reply.trim() }) });
+    const r = replyFile
+      ? await apiUpload(`/admin/tickets/${id}/replies`, (() => { const fd = new FormData(); fd.append('body', reply.trim()); fd.append('file', replyFile); return fd; })(), { 'idempotency-key': replyKey })
+      : await api(`/admin/tickets/${id}/replies`, { method: 'POST', headers: { 'idempotency-key': replyKey }, body: JSON.stringify({ body: reply.trim() }) });
     setBusy(null);
-    if (r.status === 201 || r.status === 200) { setReply(''); setReplyKey(freshKey()); await load(); return; }
+    if (r.status === 201 || r.status === 200) { setReply(''); setReplyFile(null); setReplyKey(freshKey()); await load(); return; }
+    if (r.status === 413) { setErr('That file is too large (max 25 MB).'); return; }
+    if (r.status === 400) { setErr('That file type isn’t supported.'); return; }
     if (r.status === 409) { const j = await r.json().catch(() => ({})); setErr(j.error === 'ticket_not_repliable' ? 'Reopen this ticket before sending a client reply.' : 'This reply was already sent.'); await load(); return; }
     setErr('Could not send the reply.');
   }
   async function addNote() {
     if (!note.trim()) return;
     setErr(null); setBusy('note');
-    const r = await api(`/admin/tickets/${id}/notes`, { method: 'POST', headers: { 'idempotency-key': noteKey }, body: JSON.stringify({ body: note.trim() }) });
+    const r = noteFile
+      ? await apiUpload(`/admin/tickets/${id}/notes`, (() => { const fd = new FormData(); fd.append('body', note.trim()); fd.append('file', noteFile); return fd; })(), { 'idempotency-key': noteKey })
+      : await api(`/admin/tickets/${id}/notes`, { method: 'POST', headers: { 'idempotency-key': noteKey }, body: JSON.stringify({ body: note.trim() }) });
     setBusy(null);
-    if (r.status === 201 || r.status === 200) { setNote(''); setNoteKey(freshKey()); await load(); return; }
+    if (r.status === 201 || r.status === 200) { setNote(''); setNoteFile(null); setNoteKey(freshKey()); await load(); return; }
+    if (r.status === 413) { setErr('That file is too large (max 25 MB).'); return; }
+    if (r.status === 400) { setErr('That file type isn’t supported.'); return; }
     setErr('Could not add the internal note.');
   }
   async function changeStatus(target: TicketStatus, expected: TicketStatus) {
@@ -113,6 +123,7 @@ export default function AdminTicketDetailPage() {
                     <span className="text-neutral-500"><Timestamp value={m.createdAt} /></span>
                   </div>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-200">{m.body}</p>
+                  <TicketAttachmentList attachments={m.attachments} downloadHref={(a) => `${API_BASE}/admin/tickets/${id}/attachments/${a.id}/download`} />
                 </div>
               ))}
             </div>
@@ -126,6 +137,7 @@ export default function AdminTicketDetailPage() {
                     <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-primary-light">Reply to client</div>
                     <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} maxLength={8000} placeholder="This message is sent to the client."
                       className="w-full resize-none rounded-lg border border-line bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-primary focus:outline-none" />
+                    <AttachmentPicker file={replyFile} onPick={setReplyFile} />
                     <div className="mt-2 flex justify-end">
                       <button onClick={sendReply} disabled={busy === 'reply' || !reply.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60">
                         {busy === 'reply' && <Loader2 size={14} className="animate-spin" />} Send to client
@@ -138,6 +150,7 @@ export default function AdminTicketDetailPage() {
                     <div className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-300"><Lock size={12} /> Internal note — staff only, never sent to the client</div>
                     <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={8000} placeholder="Visible to your team only."
                       className="w-full resize-none rounded-lg border border-amber-500/30 bg-base px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-amber-400 focus:outline-none" />
+                    <AttachmentPicker file={noteFile} onPick={setNoteFile} tone="amber" />
                     <div className="mt-2 flex justify-end">
                       <button onClick={addNote} disabled={busy === 'note' || !note.trim()} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3.5 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/20 disabled:opacity-60">
                         {busy === 'note' && <Loader2 size={14} className="animate-spin" />} Add internal note

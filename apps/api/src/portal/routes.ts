@@ -29,9 +29,10 @@ import { writeProjectActivity, buildProjectActivity, clientActor } from '../lib/
 import { selectClientCarePlan, selectClientCarePlanStatus } from '../lib/care-plan';
 import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
-import { findClientOrgInvoice, findClientVisibleFile } from '../lib/scoped';
+import { findClientOrgInvoice, findClientVisibleFile, findClientDownloadableTicketAttachment } from '../lib/scoped';
 import { sendFileDownload } from '../lib/download';
-import { createTicket, replyToTicket, listTickets, getTicketDetail, type TicketCtx } from '../lib/tickets';
+import { createTicket, replyToTicket, listTickets, getTicketDetail, type TicketCtx, type AttachmentInput } from '../lib/tickets';
+import { parseTicketMessageBody, validateTicketUpload, storeAndScanTicketAttachment } from '../lib/ticket-attachments';
 import { randomUUID } from 'node:crypto';
 
 type Ctx = { session: NonNullable<ReturnType<typeof verifySession>>; role: ClientUserRole };
@@ -653,22 +654,39 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!(await requireClientPermission(reply, ctx.session, 'ticket:create', ctx.role))) return;
     const key = idempotencyKey(req, reply);
     if (!key) return;
+    // Accept JSON (no file) OR multipart (fields + optional single file). Body-supplied ownership is IGNORED
+    // — createTicket derives tenant/org from the trusted session (ctx), never from these fields.
+    const parsed = await parseTicketMessageBody(req);
+    if (!parsed.ok) return reply.code(parsed.code).send({ ok: false, reason: parsed.reason });
+    const raw = parsed.parsed.fields;
     const body = z.object({
       subject: z.string().trim().min(1).max(200),
       category: z.enum(TICKET_CATEGORIES),
       projectId: z.string().min(1).max(64).optional(),
       body: z.string().trim().min(1).max(8000),
-    }).safeParse(req.body);
+    }).safeParse({ subject: raw.subject, category: raw.category, projectId: raw.projectId || undefined, body: raw.body });
     if (!body.success) return reply.code(400).send({ ok: false });
+    // Validate + hash the file BEFORE any DB write → a bad file rejects the whole request atomically (no ticket).
+    let attachment: AttachmentInput | null = null;
+    if (parsed.parsed.file) {
+      const v = validateTicketUpload(parsed.parsed.file);
+      if (!v.ok) return reply.code(400).send({ ok: false, message: 'file_rejected', reason: v.reason });
+      attachment = v.input;
+    }
     const r = await createTicket(prisma, await ticketCtx(ctx), {
       subject: cleanText(body.data.subject, 200),
       category: body.data.category,
       projectId: body.data.projectId ?? null,
       body: cleanMultiline(body.data.body, 8000),
       clientRequestId: key,
+      attachment,
     });
     if (r.ok === 'project_not_found') return reply.code(404).send({ ok: false, message: 'Project not found.' });
     if (r.ok === 'conflict') return reply.code(409).send({ ok: false, message: 'Idempotency-Key was already used with a different request.' });
+    // Store + scan ONLY on a genuinely new create (never on replay — the original object is already stored).
+    if (r.ok === 'created' && r.attachment && parsed.parsed.file) {
+      await storeAndScanTicketAttachment(prisma, r.attachment.id, parsed.parsed.file.buffer, req.log);
+    }
     return reply.code(r.ok === 'created' ? 201 : 200).send({ ok: true, idempotentReplay: r.ok === 'replay', ticket: r.ticket });
   });
 
@@ -687,15 +705,39 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!(await requireClientPermission(reply, ctx.session, 'ticket:reply', ctx.role))) return;
     const key = idempotencyKey(req, reply);
     if (!key) return;
-    const body = z.object({ body: z.string().trim().min(1).max(8000) }).safeParse(req.body);
+    const parsed = await parseTicketMessageBody(req);
+    if (!parsed.ok) return reply.code(parsed.code).send({ ok: false, reason: parsed.reason });
+    const body = z.object({ body: z.string().trim().min(1).max(8000) }).safeParse({ body: parsed.parsed.fields.body });
     if (!body.success) return reply.code(400).send({ ok: false });
-    const r = await replyToTicket(prisma, await ticketCtx(ctx), (req.params as { id: string }).id, {
+    let attachment: AttachmentInput | null = null;
+    if (parsed.parsed.file) {
+      const v = validateTicketUpload(parsed.parsed.file);
+      if (!v.ok) return reply.code(400).send({ ok: false, message: 'file_rejected', reason: v.reason });
+      attachment = v.input;
+    }
+    const ticketId = (req.params as { id: string }).id;
+    const r = await replyToTicket(prisma, await ticketCtx(ctx), ticketId, {
       body: cleanMultiline(body.data.body, 8000),
       clientRequestId: key,
+      attachment,
     });
     if (r.ok === 'ticket_not_found') return reply.code(404).send({ ok: false, message: 'Not found' });
     if (r.ok === 'conflict') return reply.code(409).send({ ok: false, message: 'Idempotency-Key was already used with a different request.' });
+    if (r.ok === 'created' && r.attachment && parsed.parsed.file) {
+      await storeAndScanTicketAttachment(prisma, r.attachment.id, parsed.parsed.file.buffer, req.log);
+    }
     return reply.code(r.ok === 'created' ? 201 : 200).send({ ok: true, idempotentReplay: r.ok === 'replay', message: r.message });
+  });
+
+  // ── Client attachment download — scan-clean, non-deleted, non-internal, org+ticket scoped only ──
+  app.get('/portal/tickets/:id/attachments/:attachmentId/download', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'ticket:read', ctx.role))) return;
+    const { id, attachmentId } = req.params as { id: string; attachmentId: string };
+    const att = await findClientDownloadableTicketAttachment(prisma, ctx.session.tenant, ctx.session.org, id, attachmentId);
+    if (!att?.storageKey) return reply.code(404).send({ ok: false, message: 'Not found' });
+    return sendFileDownload(reply, { storageKey: att.storageKey, mimeType: att.mimeType, name: att.filename });
   });
 
   // ── Notifications (client) ──

@@ -347,6 +347,7 @@ model ClientOrg {
   carePlans  CarePlan[]
   activities PortalActivity[] // Slice 2 — direct relationship-activity ownership
   tickets    Ticket[] // Slice 3 — relationship-owned support tickets
+  ticketAttachments TicketAttachment[] // Slice 5 — denormalized org ownership on ticket attachments
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -776,7 +777,8 @@ model Ticket {
   updatedAt             DateTime       @updatedAt
   closedAt              DateTime?
 
-  messages TicketMessage[]
+  messages    TicketMessage[]
+  attachments TicketAttachment[] // Slice 5
 
   @@unique([tenantId, number])
   @@unique([clientOrgId, clientRequestId])
@@ -798,9 +800,82 @@ model TicketMessage {
   requestHash     String? // sha256 of the reply payload
   createdAt       DateTime          @default(now())
 
+  attachments TicketAttachment[] // Slice 5
+
   @@unique([ticketId, clientRequestId])
   @@index([ticketId, createdAt])
   @@map("ticket_messages")
+}
+
+// Slice 5 — a file attached to a support ticket message. DELIBERATELY separate from ProjectFile: it is
+// project-LESS (org-owned via clientOrgId), never touches finalizeAvailable (so no project/relationship
+// PortalActivity timeline event and no client "New file" email fire on scan completion), and defaults
+// fail-closed to PENDING_UPLOAD (unlike ProjectFile's AVAILABLE default). Internal-vs-client visibility is
+// INHERITED from the parent TicketMessage.internal (no duplicate flag). Ownership (tenant/org/ticket) is
+// always derived from the trusted scoped ticket, never from request-body input. Additive: no change to
+// project_files / file_scans.
+model TicketAttachment {
+  id          String        @id @default(cuid())
+  tenantId    String        // scalar, app-enforced (matches ProjectFile/Ticket convention)
+  clientOrgId String        // denormalized from the resolved ticket for scoped authz — AND FK-enforced
+  clientOrg   ClientOrg     @relation(fields: [clientOrgId], references: [id], onDelete: Restrict)
+  ticketId    String        // durable scope/authz anchor
+  ticket      Ticket        @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  messageId   String        // REQUIRED — visual grouping + internal-visibility inheritance
+  message     TicketMessage @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  filename        String
+  mimeType        String?
+  sizeBytes       Int?
+  storageProvider String?    // 'local' | 's3'
+  storageKey      String?    // object-storage key — null until stored
+  state           FileState  @default(PENDING_UPLOAD) // fail-closed; AVAILABLE only after a CLEAN scan
+  fileHash        String?    // SHA-256 (audit evidence; also folded into the message requestHash)
+  scans           TicketAttachmentScan[]
+  deletedAt       DateTime?  // defensive: only non-deleted attachments are downloadable (no writer in v1)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([tenantId, ticketId])
+  @@index([messageId])
+  @@index([clientOrgId, ticketId])
+  @@map("ticket_attachments")
+}
+
+// Slice 5 — malware-scan attempt for a TicketAttachment. Sibling of FileScan (identical durable-job +
+// evidence columns) so file_scans stays byte-for-byte untouched; both drive the SAME extracted scan
+// state-machine (scanning/service.ts). A ticket attachment becomes AVAILABLE only on a CLEAN result.
+model TicketAttachmentScan {
+  id           String           @id @default(cuid())
+  tenantId     String
+  attachmentId String
+  attachment   TicketAttachment @relation(fields: [attachmentId], references: [id], onDelete: Restrict)
+
+  status         JobStatus @default(PENDING)
+  idempotencyKey String    @unique
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  nextAttemptAt  DateTime  @default(now())
+  lastError      String?
+  errorCode      String?
+  retryCount     Int       @default(0)
+
+  provider         String?
+  engine           String?
+  engineVersion    String?
+  signatureVersion String?
+  result           ScanResult?
+  threatName       String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  fileHash         String?
+  fileSizeBytes    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([attachmentId])
+  @@map("ticket_attachment_scans")
 }
 
 // ── Delivery side (staff) ────────────────────────────────────────────────────

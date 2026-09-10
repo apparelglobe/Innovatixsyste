@@ -56,6 +56,34 @@ export function findClientOrgUser(prisma: PrismaClient, tenantId: string, client
   return prisma.clientUser.findFirst({ where: { id, tenantId, clientOrgId } });
 }
 
+// ── Ticket attachments (Slice 5) — the ONLY sanctioned download-lookup path ──────────────────────────
+// Every download folds: tenant (+ org for clients), the URL ticketId (attachment.ticketId===:id), scan-clean
+// state (AVAILABLE only), non-deleted, a present storageKey, AND the parent message's internal flag. Internal
+// visibility is inherited from TicketMessage.internal — NEVER a column on the attachment. A `null` result is
+// a 404 (no existence reveal). NEVER hand-write where:{ id } for a ticket attachment download.
+
+/** Client download: org-scoped; internal-note attachments are excluded structurally (message.internal:false). */
+export function findClientDownloadableTicketAttachment(prisma: PrismaClient, tenantId: string, clientOrgId: string, ticketId: string, attachmentId: string) {
+  return prisma.ticketAttachment.findFirst({
+    where: {
+      id: attachmentId, ticketId, tenantId, clientOrgId,
+      state: 'AVAILABLE', deletedAt: null, storageKey: { not: null },
+      message: { internal: false }, // client NEVER sees an internal-note attachment (incl. direct known-id)
+    },
+  });
+}
+
+/** Staff download: tenant-scoped; VIEWER (canSeeInternal=false) excluded from internal-note attachments. */
+export function findStaffDownloadableTicketAttachment(prisma: PrismaClient, tenantId: string, ticketId: string, attachmentId: string, canSeeInternal: boolean) {
+  return prisma.ticketAttachment.findFirst({
+    where: {
+      id: attachmentId, ticketId, tenantId,
+      state: 'AVAILABLE', deletedAt: null, storageKey: { not: null },
+      ...(canSeeInternal ? {} : { message: { internal: false } }), // VIEWER cannot download internal-note files
+    },
+  });
+}
+
 /**
  * Assert a child record's tenant matches an expected tenant. Used by workers and
  * webhooks that resolve a record by a globally-unique id derived from trusted
