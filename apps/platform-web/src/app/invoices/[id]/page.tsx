@@ -8,6 +8,7 @@ import { usePortal } from '@/lib/usePortal';
 import { PortalShell } from '@/components/PortalShell';
 import { api, apiJson } from '@/lib/portal-api';
 import { fmtDate, fmtMoney } from '@/lib/fmt';
+import { statusBadge } from '@/lib/invoice-format';
 
 type LineItem = { id: string; description: string; quantity: number; unitCents: number; amountCents: number; milestoneName: string | null };
 type Invoice = {
@@ -16,14 +17,6 @@ type Invoice = {
   billingContactName: string | null; paymentUrl: string | null; pdfKey: string | null;
   kind?: string; billingPeriodStart?: string | null; billingPeriodEnd?: string | null;
   lineItems: LineItem[];
-};
-
-const STATUS: Record<string, { label: string; cls: string }> = {
-  PAID: { label: 'Paid', cls: 'bg-emerald-400/15 text-emerald-300' },
-  SENT: { label: 'Due', cls: 'bg-amber-400/15 text-amber-300' },
-  OVERDUE: { label: 'Overdue', cls: 'bg-red-500/15 text-red-300' },
-  DRAFT: { label: 'Draft', cls: 'bg-white/10 text-neutral-300' },
-  VOIDED: { label: 'Void', cls: 'bg-white/5 text-neutral-500 line-through' },
 };
 
 export default function InvoiceDetailPage() {
@@ -75,7 +68,7 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  const s = inv ? STATUS[inv.overdue ? 'OVERDUE' : inv.status] ?? { label: inv.status, cls: 'bg-white/10 text-neutral-300' } : null;
+  const s = inv ? statusBadge(inv) : null;
   const retainer = inv?.kind === 'RETAINER';
   const period = retainer && inv?.billingPeriodStart
     ? `${fmtDate(inv.billingPeriodStart)}${inv.billingPeriodEnd ? ` – ${fmtDate(inv.billingPeriodEnd)}` : ''}`

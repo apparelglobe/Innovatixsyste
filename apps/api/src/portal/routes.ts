@@ -30,6 +30,7 @@ import { selectClientCarePlan, selectClientCarePlanStatus } from '../lib/care-pl
 import { inviteClientUser } from '../admin/client-users';
 import { checkoutGateway } from '../billing/gateway';
 import { findClientOrgInvoice, findClientVisibleFile, findClientDownloadableTicketAttachment } from '../lib/scoped';
+import { listClientBillingHistory, clientBillingAggregates, listAllClientBillingRows, type BillingTab } from '../lib/billing-history';
 import { sendFileDownload } from '../lib/download';
 import { createTicket, replyToTicket, listTickets, getTicketDetail, type TicketCtx, type AttachmentInput } from '../lib/tickets';
 import { parseTicketMessageBody, validateTicketUpload, storeAndScanTicketAttachment } from '../lib/ticket-attachments';
@@ -390,23 +391,39 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       },
     });
 
+    // Slice 6 (D1): the billing block now shares the ONE relationship-wide billing helper (all of the org's
+    // projects + org-level RETAINER/deposit, DRAFT-excluded, overdue-derived) — fixing the old single-most-
+    // recent-project defect here too. Response CONTRACT is preserved: `{ invoices, carePlan }`, billing:null
+    // for non-owners, carePlan from the same separate selector. `project` no longer feeds billing.
     let billing: { invoices: unknown[]; carePlan: unknown } | null = null;
     if (canBilling) {
-      const [projInvoices, orgInvoices, carePlan] = await Promise.all([
-        project
-          ? prisma.invoice.findMany({ where: { tenantId: ctx.session.tenant, projectId: project.id }, orderBy: { createdAt: 'desc' } })
-          : Promise.resolve([]),
-        // Org-scoped invoices (RETAINER, and any pre-project DEPOSIT): projectId null, this exact org.
-        prisma.invoice.findMany({ where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, projectId: null }, orderBy: { createdAt: 'desc' } }),
+      const [invoices, carePlan] = await Promise.all([
+        listAllClientBillingRows(prisma, ctx.session.tenant, ctx.session.org),
         selectClientCarePlan(prisma, ctx.session.tenant, ctx.session.org),
       ]);
-      const invoices = [...projInvoices, ...orgInvoices]
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        .map((i) => ({ ...i, overdue: isInvoiceOverdue(i) }));
       billing = { invoices, carePlan };
     }
 
     return reply.send({ ok: true, project: project ? { ...project, approvals: await enrichApprovals(prisma, project.approvals) } : null, billing });
+  });
+
+  // ── Slice 6 — relationship-wide client billing HISTORY (OWNER-only) ──
+  //    All non-DRAFT invoices across ALL of the org's projects + org-level RETAINER/deposit invoices, with
+  //    tab/project filters, keyset pagination, and per-currency relationship aggregates. READ-ONLY.
+  app.get('/portal/billing', async (req, reply) => {
+    const ctx = await requireSession(req, reply);
+    if (!ctx) return;
+    if (!(await requireClientPermission(reply, ctx.session, 'invoice:read', ctx.role))) return;
+    const q = req.query as Record<string, string | undefined>;
+    const tab = (['all', 'unpaid', 'paid', 'overdue'].includes(q.status ?? '') ? (q.status as BillingTab) : 'all');
+    const projectId = q.projectId || undefined; // a foreign id is safe: the helper's relation-join yields empty
+    const limit = q.limit ? Number(q.limit) : undefined;
+    const [list, aggregates, carePlan] = await Promise.all([
+      listClientBillingHistory(prisma, ctx.session.tenant, ctx.session.org, { tab, projectId, cursor: q.cursor || undefined, limit: Number.isFinite(limit) ? limit : undefined }),
+      clientBillingAggregates(prisma, ctx.session.tenant, ctx.session.org), // relationship-wide (ignores tab/project — D2)
+      selectClientCarePlan(prisma, ctx.session.tenant, ctx.session.org),    // D5: one request powers the whole page
+    ]);
+    return reply.send({ ok: true, invoices: list.invoices, nextCursor: list.nextCursor, aggregates, carePlan });
   });
 
   // ── Send a message to the delivery team (client → team) ──
