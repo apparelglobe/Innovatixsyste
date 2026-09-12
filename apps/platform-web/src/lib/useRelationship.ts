@@ -11,7 +11,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiJson } from './portal-api';
 
-export type ProjectListItem = { id: string; name: string; status: string };
+// Slice 7: archivedAt (null = current, non-null = past). The list is fetched WITHOUT a scope (backward-
+// compatible default = all), so consumers that represent current work (switcher, new-ticket picker) filter
+// to archivedAt == null client-side, while relationship-wide surfaces (e.g. the Billing project filter)
+// keep showing all — archive is a view partition, never an access filter.
+export type ProjectListItem = { id: string; name: string; status: string; archivedAt: string | null };
 export type RelMe = { user: { firstName?: string; lastName?: string; role?: 'OWNER' | 'MEMBER' }; org: { name: string }; canBilling: boolean };
 
 export function useRelationship() {

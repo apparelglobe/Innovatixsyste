@@ -33,14 +33,15 @@ export default function HomePage() {
   const { me, projects, userName, canBilling, isOwner, loading } = useRelationship();
   const [cards, setCards] = useState<Card[] | undefined>(undefined);
   const [carePlan, setCarePlan] = useState<CarePlan>(null);
+  const [pastCount, setPastCount] = useState(0);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
 
   const load = useCallback(async () => {
     const [rel, act] = await Promise.all([
-      apiJson<{ projects: Card[]; carePlan: CarePlan }>('/portal/relationship-overview'),
+      apiJson<{ projects: Card[]; carePlan: CarePlan; pastProjectCount?: number }>('/portal/relationship-overview'),
       apiJson<{ activities: ActivityItem[] }>('/portal/relationship-activity'),
     ]);
-    if (rel.status === 200) { setCards(rel.body.projects); setCarePlan(rel.body.carePlan ?? null); }
+    if (rel.status === 200) { setCards(rel.body.projects); setCarePlan(rel.body.carePlan ?? null); setPastCount(rel.body.pastProjectCount ?? 0); }
     if (act.status === 200) setActivity(act.body.activities ?? []);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -71,10 +72,19 @@ export default function HomePage() {
               </section>
             )}
 
-            <h1 className="mt-6 text-lg font-extrabold tracking-tight text-white">Your projects</h1>
+            <div className="mt-6 flex flex-wrap items-baseline justify-between gap-2">
+              <h1 className="text-lg font-extrabold tracking-tight text-white">Your projects</h1>
+              {pastCount > 0 && (
+                <a href="/projects#past" className="inline-flex items-center gap-1 text-sm font-medium text-neutral-400 transition hover:text-white">
+                  Past projects <span className="text-neutral-500">({pastCount})</span> <ArrowUpRight size={14} />
+                </a>
+              )}
+            </div>
             {(cards ?? []).length === 0 ? (
               <div className="mt-3 rounded-2xl border border-line bg-surface p-6 text-neutral-400">
-                No active projects yet. Your delivery team will set this up shortly.
+                {pastCount > 0
+                  ? <>No current projects right now. <a href="/projects#past" className="font-semibold text-primary-light hover:underline">View {pastCount} past project{pastCount === 1 ? '' : 's'}</a>.</>
+                  : 'No active projects yet. Your delivery team will set this up shortly.'}
               </div>
             ) : (
               <div className="mt-3 space-y-4">

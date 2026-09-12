@@ -22,7 +22,7 @@ const NAV = [
 
 export function PortalShell({
   orgName, userName, active, children, billingAllowed = false, projects = [], currentProjectId,
-}: { orgName: string; userName: string; active: string; children: React.ReactNode; billingAllowed?: boolean; projects?: { id: string; name: string; status: string }[]; currentProjectId?: string }) {
+}: { orgName: string; userName: string; active: string; children: React.ReactNode; billingAllowed?: boolean; projects?: { id: string; name: string; status: string; archivedAt?: string | null }[]; currentProjectId?: string }) {
   const router = useRouter();
   const initials = userName.split(' ').map((s) => s[0]).slice(0, 2).join('').toUpperCase() || 'U';
   // Slice 1: the project switcher is NAVIGATION ONLY (selecting → /projects/:id), never persistent
@@ -118,7 +118,7 @@ export function PortalShell({
 /** URL-navigation project switcher (Slice 1). Selecting a project navigates to /projects/:id; the
  *  "Relationship home" entry returns to /. Never sets persistent app state — the highlighted project is
  *  whatever `currentProjectId` (from the /projects/:id URL) says, or none on Home. */
-function ProjectSwitcher({ projects, currentProjectId, orgName }: { projects: { id: string; name: string; status: string }[]; currentProjectId?: string; orgName: string }) {
+function ProjectSwitcher({ projects, currentProjectId, orgName }: { projects: { id: string; name: string; status: string; archivedAt?: string | null }[]; currentProjectId?: string; orgName: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -127,6 +127,10 @@ function ProjectSwitcher({ projects, currentProjectId, orgName }: { projects: { 
     document.addEventListener('click', onDoc);
     return () => document.removeEventListener('click', onDoc);
   }, []);
+  // Slice 7: the switcher lists CURRENT projects only; archived (past) projects are reachable through the
+  // "Past projects" entry → /projects#past (they still open read-only via /projects/:id, never orphaned).
+  const currentProjects = projects.filter((p) => !p.archivedAt);
+  const pastCount = projects.length - currentProjects.length;
   const current = projects.find((p) => p.id === currentProjectId);
   return (
     <div ref={ref} className="relative">
@@ -144,7 +148,7 @@ function ProjectSwitcher({ projects, currentProjectId, orgName }: { projects: { 
             <Home size={15} /> Relationship home
           </button>
           <div className="max-h-72 overflow-y-auto border-t border-line/60 py-1">
-            {projects.map((p) => (
+            {currentProjects.map((p) => (
               <button key={p.id} role="menuitem" onClick={() => { setOpen(false); router.push(`/projects/${p.id}`); }}
                 className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition ${p.id === currentProjectId ? 'font-semibold text-primary-light' : 'text-neutral-300 hover:bg-white/[0.04]'}`}>
                 <span className="truncate">{p.name}</span>
@@ -152,6 +156,12 @@ function ProjectSwitcher({ projects, currentProjectId, orgName }: { projects: { 
               </button>
             ))}
           </div>
+          {pastCount > 0 && (
+            <button role="menuitem" onClick={() => { setOpen(false); router.push('/projects#past'); }}
+              className="flex w-full items-center gap-2 border-t border-line/60 px-4 py-2.5 text-left text-sm text-neutral-400 transition hover:bg-white/[0.04] hover:text-white">
+              <FolderKanban size={15} className="text-neutral-500" /> Past projects <span className="text-neutral-500">({pastCount})</span>
+            </button>
+          )}
         </div>
       )}
     </div>

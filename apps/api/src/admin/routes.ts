@@ -17,6 +17,7 @@ import { parseDateInput } from '../lib/dates';
 import { etDayNoonUTC } from '../lib/billing-period';
 import { MOMENT, MOMENT_MESSAGE, CURATED_MOMENT_TYPES } from '../lib/relationship-moments';
 import { emitRetainerActivated } from '../lib/care-plan';
+import { archiveProject, unarchiveProject } from '../lib/project-archive';
 import { sendFileDownload } from '../lib/download';
 import { STAFF_COOKIE, STAFF_COOKIE_OPTS, signStaff, verifyStaff, verifyStaffPassword } from '../staff/auth';
 import { can, type Action } from '../staff/rbac';
@@ -179,6 +180,25 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       }
       await notifyClientOrg(prisma, ctx.tenantId, p.clientOrgId, { type: 'PROJECT_STATUS_CHANGED', title: `Project status: ${b.data.status}`, projectId: p.id, linkPath: '/', email: true });
     }
+    return reply.send({ ok: true });
+  });
+
+  // ── Slice 7: archive / unarchive (staff-only, reuses project:write; ADMIN + DELIVERY_LEAD). CAS-guarded,
+  //    same-tx AuditEvent (PROJECT_ARCHIVED / PROJECT_UNARCHIVED). NEVER changes Project.status, and emits
+  //    NO PortalActivity / notification / email — archive is a workspace-organisation view state, not a
+  //    client-facing event. A stale/concurrent repeat returns 409 (already in the target state). ──
+  app.post('/admin/projects/:id/archive', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'project:write'); if (!ctx) return;
+    const r = await archiveProject(prisma, ctx.tenantId, ctx.session.sub, (req.params as { id: string }).id);
+    if (r.ok === 'not_found') return reply.code(404).send({ ok: false });
+    if (r.ok === 'conflict') return reply.code(409).send({ ok: false, message: 'Project is already archived.', archivedAt: r.archivedAt });
+    return reply.send({ ok: true, archivedAt: r.archivedAt });
+  });
+  app.post('/admin/projects/:id/unarchive', async (req, reply) => {
+    const ctx = await requireStaff(req, reply, 'project:write'); if (!ctx) return;
+    const r = await unarchiveProject(prisma, ctx.tenantId, ctx.session.sub, (req.params as { id: string }).id);
+    if (r.ok === 'not_found') return reply.code(404).send({ ok: false });
+    if (r.ok === 'conflict') return reply.code(409).send({ ok: false, message: 'Project is not archived.' });
     return reply.send({ ok: true });
   });
 

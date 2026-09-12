@@ -427,6 +427,11 @@ model Project {
   dueDate         DateTime?
   nextUpdateAt    DateTime?     // Phase 2: staff-committed "Our turn — next update by" date (client-facing)
   nextUpdateNote  String?       // Phase 2: optional short note shown alongside the next-update date
+  // Slice 7: archive is a VIEW/lifecycle state, SEPARATE from `status`. null = current (in the active
+  // workspace); non-null = moved to Past Projects. Staff-only; never auto-set on COMPLETE; unarchive just
+  // clears it (delivery `status` is never touched). NOT an authorization filter — archived projects stay
+  // fully readable via detail/billing/files/tickets/activity; only current-work surfaces filter on it.
+  archivedAt      DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -443,6 +448,7 @@ model Project {
 
   @@index([tenantId, clientOrgId])
   @@index([tenantId, status])
+  @@index([tenantId, archivedAt]) // Slice 7: cheap current-vs-past partition for the active-work surfaces
   @@map("projects")
 }
 

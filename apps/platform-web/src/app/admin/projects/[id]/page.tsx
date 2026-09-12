@@ -135,6 +135,21 @@ export default function AdminProjectPage() {
                   <input disabled={!can('project:write')} type="number" min={0} max={100} defaultValue={p.percentComplete} onBlur={(e) => act('PATCH', `/admin/projects/${id}`, { percentComplete: Number(e.target.value) })} className={`${input} w-24`} />
                   <span className="self-center text-sm text-neutral-500">% complete</span>
                 </div>
+                {/* Slice 7: archive is SEPARATE from delivery status — it only moves the project out of the
+                    client's current workspace (Past Projects). Archiving/unarchiving never changes status. */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4">
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Workspace visibility</h4>
+                    <p className="mt-1 text-xs text-neutral-500">{p.archivedAt ? `Archived — hidden from the client's current workspace (still fully readable). Delivery status stays ${p.status}.` : "Current — shown in the client's active workspace."}</p>
+                  </div>
+                  {p.archivedAt ? (
+                    <button disabled={!can('project:write')} onClick={() => act('POST', `/admin/projects/${id}/unarchive`)}
+                      className="shrink-0 rounded-lg border border-line-strong px-3 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-white/[0.05] disabled:opacity-50">Unarchive</button>
+                  ) : (
+                    <button disabled={!can('project:write')} onClick={() => act('POST', `/admin/projects/${id}/archive`)}
+                      className="shrink-0 rounded-lg border border-line-strong px-3 py-2 text-sm font-semibold text-neutral-300 transition hover:bg-white/[0.05] disabled:opacity-50">Archive</button>
+                  )}
+                </div>
                 <div className="mt-4 border-t border-line pt-4">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Next update to the client</h4>
                   <p className="mt-1 text-xs text-neutral-500">While it&rsquo;s our turn, the client&rsquo;s workspace shows &ldquo;next update by this date.&rdquo; Set a real commitment; leave blank for none.</p>

@@ -158,7 +158,9 @@ test('9. /portal/projects is a lean, financial-data-free list', async () => {
   const b = (await get('/v1/portal/projects', sess(ownerN))).json();
   assert.equal(b.projects.length, 8);
   for (const p of b.projects) {
-    assert.deepEqual(Object.keys(p).sort(), ['id', 'name', 'status']);
+    // Slice 7 additively adds `archivedAt` (a lifecycle timestamp, not financial data) so the client can
+    // split current vs past; the list stays lean + financial-data-free.
+    assert.deepEqual(Object.keys(p).sort(), ['archivedAt', 'id', 'name', 'status']);
     assert.equal(p.payableInvoice, undefined);
   }
 });

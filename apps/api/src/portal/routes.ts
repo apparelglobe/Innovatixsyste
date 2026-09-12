@@ -161,7 +161,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     const canBilling = !!role && clientCan(role, 'invoice:read');
 
     const project = await prisma.project.findFirst({
-      where: { tenantId: tenant, clientOrgId: org },
+      where: { tenantId: tenant, clientOrgId: org, archivedAt: null }, // Slice 7: the default/active project is a CURRENT one, never archived
       orderBy: { updatedAt: 'desc' },
       include: {
         milestones: { orderBy: { sequence: 'asc' } },
@@ -239,8 +239,10 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
 
     // 1) projects + a COMPACT milestone select (status/name/dueDate only) — one findMany + one batched
     //    milestones query; gives milestone counts + nextMilestone without fetching full detail.
+    // Slice 7: Home focuses on CURRENT work — cards are active projects only (archivedAt null); past
+    // projects are surfaced as a count/link, not as cards. This is a view partition, not an auth filter.
     const projects = await prisma.project.findMany({
-      where: { tenantId: tenant, clientOrgId: org },
+      where: { tenantId: tenant, clientOrgId: org, archivedAt: null },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       select: {
         id: true, name: true, status: true, percentComplete: true, dueDate: true,
@@ -249,6 +251,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       },
     });
     const ids = projects.map((p) => p.id);
+    const pastProjectCount = await prisma.project.count({ where: { tenantId: tenant, clientOrgId: org, archivedAt: { not: null } } });
 
     // 2) ALL pending approvals for ALL projects in ONE query → grouped in JS (count + first-per-project).
     const pendingApprovals = ids.length
@@ -300,7 +303,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
       };
     });
 
-    return reply.send({ ok: true, canBilling, carePlan, projects: cards });
+    return reply.send({ ok: true, canBilling, carePlan, projects: cards, pastProjectCount });
   });
 
   // ── Lean project list (Slice 1) — drives the URL-navigation switcher on project pages. NO financial
@@ -308,10 +311,16 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
   app.get('/portal/projects', async (req, reply) => {
     const ctx = await requireSession(req, reply);
     if (!ctx) return;
+    // Slice 7: ?scope=current|past|all. `all` is the backward-compatible DEFAULT (unchanged behaviour for
+    // existing callers); `current` = the active workspace (archivedAt null), `past` = archived only. This is
+    // a presentation partition — it is NEVER an authorization filter (detail/billing/files stay unscoped by
+    // archive). archivedAt is added to the shape so a caller can split/label current vs past client-side.
+    const scope = (req.query as { scope?: string }).scope;
+    const archiveWhere = scope === 'current' ? { archivedAt: null } : scope === 'past' ? { archivedAt: { not: null } } : {};
     const projects = await prisma.project.findMany({
-      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, ...archiveWhere },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      select: { id: true, name: true, status: true },
+      select: { id: true, name: true, status: true, archivedAt: true },
     });
     return reply.send({ ok: true, projects: orderProjectsForRelationship(projects) });
   });
@@ -374,7 +383,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     const role = await resolveClientRole(ctx.session);
     const canBilling = !!role && clientCan(role, 'invoice:read');
     const project = await prisma.project.findFirst({
-      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, archivedAt: null }, // Slice 7: the caller's active project is a CURRENT one, never archived
       orderBy: { updatedAt: 'desc' },
       include: {
         milestones: { orderBy: { sequence: 'asc' } },
@@ -435,7 +444,7 @@ export async function registerPortalRoutes(app: FastifyInstance): Promise<void> 
     if (!body.success) return reply.code(400).send({ ok: false });
 
     const project = await prisma.project.findFirst({
-      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org },
+      where: { tenantId: ctx.session.tenant, clientOrgId: ctx.session.org, archivedAt: null }, // Slice 7: never route a new message to an archived project
       orderBy: { updatedAt: 'desc' },
       select: { id: true },
     });

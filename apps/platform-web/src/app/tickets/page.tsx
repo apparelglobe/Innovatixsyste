@@ -48,7 +48,9 @@ export default function TicketsPage() {
             </div>
 
             {composing && (
-              <NewTicket projects={projects} onCancel={() => setComposing(false)} onCreated={async () => { setComposing(false); await load(); }} />
+              /* Slice 7: a new ticket may only be linked to a CURRENT project (existing links to now-archived
+                 projects stay intact server-side; only the picker hides archived ones). */
+              <NewTicket projects={projects.filter((p) => !p.archivedAt)} onCancel={() => setComposing(false)} onCreated={async () => { setComposing(false); await load(); }} />
             )}
 
             <div className="mt-5 space-y-3">
